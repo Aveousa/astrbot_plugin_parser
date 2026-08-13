@@ -17,6 +17,12 @@
         "type": "bool",
         "default": true
     },
+    "require_at_in_group": {
+        "description": "群组消息必须@机器人",
+        "hint": "非支持仲裁的平台群组中，只有@机器人的消息才会触发解析",
+        "type": "bool",
+        "default": true
+    },
     "debounce_interval": {
         "description": "防抖秒数",
         "hint": "防抖机制：同一个会话下，防抖时间内不解析那些已经解析过的链接。设为 0 表示不启用防抖机制",

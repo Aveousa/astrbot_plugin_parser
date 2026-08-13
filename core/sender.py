@@ -195,11 +195,14 @@ class MessageSender:
         for cont in plan["heavy"]:
             try:
                 path: Path = await cont.get_path()
-            except SizeLimitException:
-                segs.append(Plain("此项媒体超过大小限制"))
-                continue
-            except DurationLimitException:
-                segs.append(Plain("此项媒体超过时长限制"))
+            except (SizeLimitException, DurationLimitException) as exc:
+                if self.cfg.show_download_fail_tip:
+                    message = (
+                        "此项媒体超过时长限制"
+                        if isinstance(exc, DurationLimitException)
+                        else "此项媒体超过大小限制"
+                    )
+                    segs.append(Plain(message))
                 continue
             except DownloadException:
                 if self.cfg.show_download_fail_tip:

@@ -201,6 +201,7 @@ class PluginConfig(ConfigNode):
     blacklist: list[str]
 
     arbiter: bool
+    require_at_in_group: bool
     debounce_interval: int
 
     source_max_size: int
