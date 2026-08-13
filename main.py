@@ -9,6 +9,7 @@ from astrbot.api.star import Context, Star
 from astrbot.core import AstrBotConfig
 from astrbot.core.message.components import At, Image, Json, Plain, Reply
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
+from astrbot.core.platform.message_type import MessageType
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -133,7 +134,20 @@ class ParserPlugin(Star):
 
         # 指定机制：专门@其他bot的消息不解析
         self_id = event.get_self_id()
-        if isinstance(seg1, At) and str(seg1.qq) != self_id:
+        mentioned_ids: set[str] = set()
+        for seg in chain:
+            if isinstance(seg, At):
+                mentioned_ids.add(str(seg.qq))
+            elif isinstance(seg, Plain):
+                mentioned_ids.update(re.findall(r"<@!?([^>\s]+)>", seg.text))
+        if (
+            self.cfg.require_at_in_group
+            and not isinstance(event, AiocqhttpMessageEvent)
+            and event.get_message_type() == MessageType.GROUP_MESSAGE
+            and self_id not in mentioned_ids
+        ):
+            return
+        if mentioned_ids and self_id not in mentioned_ids:
             return
 
         # 卡片解析：解析Json组件，提取URL
