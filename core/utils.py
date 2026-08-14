@@ -1,10 +1,11 @@
 import asyncio
 import hashlib
 import json
+import re
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, TypeVar
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from astrbot.api import logger
 
@@ -209,15 +210,26 @@ def generate_file_name(url: str, default_suffix: str = "") -> str:
     return file_name
 
 
+URL_RE = re.compile(r"https?://[^\s\"'<>\\]+")
+
+
+def _iter_json_string_values(obj: Any):
+    if isinstance(obj, dict):
+        for value in obj.values():
+            yield from _iter_json_string_values(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _iter_json_string_values(item)
+    elif isinstance(obj, str):
+        yield obj
+
+
+def _clean_embedded_url(value: str) -> str:
+    return unquote(value.strip().replace("\\/", "/"))
+
+
 def extract_json_url(data: dict | str) -> str | None:
-    """处理 JSON 类型的消息段，提取 URL
-
-    Args:
-        data: JSON 类型的消息字典
-
-    Returns:
-        Optional[str]: 提取的 URL, 如果提取失败则返回 None
-    """
+    """处理 JSON 类型消息段，提取可交给解析器处理的 URL。"""
     if isinstance(data, str):
         try:
             data = json.loads(data)
@@ -227,16 +239,68 @@ def extract_json_url(data: dict | str) -> str | None:
     if not isinstance(data, dict):
         return None
 
-    meta: dict[str, Any] | None = data.get("meta")
-    if not meta:
+    meta = data.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+
+    # 优先读取 QQ 卡片中明确表达跳转目标的字段。
+    priority_paths = (
+        ("miniapp", "legacyUrl"),
+        ("miniapp", "pcJumpUrl"),
+        ("miniapp", "jumpUrl"),
+        ("miniapp", "sourceUrl"),
+        ("miniapp", "url"),
+        ("detail_1", "qqdocurl"),
+        ("detail_1", "jumpUrl"),
+        ("detail_1", "url"),
+        ("detail_1", "sourceUrl"),
+        ("detail_1", "shareUrl"),
+        ("detail_1", "targetUrl"),
+        ("news", "jumpUrl"),
+        ("news", "url"),
+        ("news", "sourceUrl"),
+        ("news", "shareUrl"),
+        ("music", "musicUrl"),
+        ("music", "jumpUrl"),
+        ("music", "url"),
+    )
+    for key1, key2 in priority_paths:
+        node = meta.get(key1)
+        if not isinstance(node, dict):
+            continue
+        value = node.get(key2)
+        if not isinstance(value, str):
+            continue
+        match = URL_RE.search(_clean_embedded_url(value))
+        if match:
+            return match.group(0)
+
+    # 部分 OneBot/QQ 卡片会把真实 URL 藏在更深层字段中。
+    candidates: list[str] = []
+    for value in _iter_json_string_values(data):
+        cleaned = _clean_embedded_url(value)
+        candidates.extend(match.group(0) for match in URL_RE.finditer(cleaned))
+
+    if not candidates:
         return None
 
-    for key1, key2 in (
-        ("music", "musicUrl"),
-        ("detail_1", "qqdocurl"),
-        ("news", "jumpUrl"),
-        ("music", "jumpUrl"),
-    ):
-        if url := meta.get(key1, {}).get(key2):
-            return url
-    return None
+    # QZone 分享卡优先，之后保持常见分享短链优先级。
+    preferred_keywords = (
+        "mobile.qzone.qq.com/l",
+        "h5.qzone.qq.com/ugc/share",
+        "m.qzone.qq.com",
+        "user.qzone.qq.com",
+        "qzone.qq.com",
+        "b23.tv",
+        "bili2233.cn",
+        "bilibili.com",
+        "xhslink.cn",
+        "xhslink.com",
+        "xiaohongshu.com",
+    )
+    for keyword in preferred_keywords:
+        for url in candidates:
+            if keyword in url:
+                return url
+
+    return candidates[0]

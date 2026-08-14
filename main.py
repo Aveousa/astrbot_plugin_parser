@@ -150,10 +150,15 @@ class ParserPlugin(Star):
         if mentioned_ids and self_id not in mentioned_ids:
             return
 
-        # 卡片解析：解析Json组件，提取URL
-        if isinstance(seg1, Json):
-            text = extract_json_url(seg1.data)
-            logger.debug(f"解析Json组件: {text}")
+        # 卡片解析：扫描整条消息链，兼容 @ + JSON 卡片等组合消息。
+        for seg in chain:
+            if not isinstance(seg, Json):
+                continue
+            parsed_url = extract_json_url(seg.data)
+            logger.debug(f"解析Json组件: {parsed_url}")
+            if parsed_url:
+                text = parsed_url
+                break
 
         # 引用解析
         reply_seg = next((seg for seg in chain if isinstance(seg, Reply)), None)
