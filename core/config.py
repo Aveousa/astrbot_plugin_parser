@@ -161,6 +161,11 @@ class ParserItem(ConfigNode):
     video_quality: str | None
     nsfw: str | None
     max_page: int | None
+    send_blue_links: bool | None
+    qzone_credential_source: str | None
+    snowluma_http_url: str | None
+    snowluma_access_token: str | None
+    snowluma_credential_cache_seconds: int | None
 
     @property
     def name(self) -> str:
@@ -185,6 +190,7 @@ class ParserConfig(ConfigNodeContainer):
     iwara: ParserItem
     shipinhao: ParserItem
     pixiv: ParserItem
+    qzone: ParserItem
 
     def __init__(self, nodes: list[dict[str, Any]]):
         super().__init__(nodes, item_cls=ParserItem)

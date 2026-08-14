@@ -245,6 +245,69 @@
                     }
                 }
             },
+            "qzone": {
+                "name": "QQ空间解析器",
+                "items": {
+                    "enable": {
+                        "description": "启用",
+                        "type": "bool",
+                        "default": false
+                    },
+                    "use_proxy": {
+                        "description": "使用代理",
+                        "type": "bool",
+                        "default": false
+                    },
+                    "qzone_credential_source": {
+                        "description": "QQ空间登录态来源",
+                        "hint": "推荐 SnowLuma 自动：通过 SnowLuma 当前已登录 QQ 获取 qzone.qq.com 凭证；失败时仍会尝试下方手动 Cookies。",
+                        "type": "string",
+                        "options": [
+                            "snowluma",
+                            "manual"
+                        ],
+                        "labels": [
+                            "SnowLuma 自动（推荐）",
+                            "仅手动 Cookies"
+                        ],
+                        "default": "snowluma"
+                    },
+                    "snowluma_http_url": {
+                        "description": "SnowLuma OneBot HTTP 地址",
+                        "hint": "填写 SnowLuma 的 HTTP API 地址，不是正向 WebSocket 地址。例：http://127.0.0.1:3000",
+                        "type": "string",
+                        "default": "http://127.0.0.1:3000"
+                    },
+                    "snowluma_access_token": {
+                        "description": "SnowLuma Access Token",
+                        "hint": "SnowLuma HTTP API 未配置鉴权时可留空；已配置则填写对应 OneBot access_token。",
+                        "type": "string",
+                        "default": ""
+                    },
+                    "snowluma_credential_cache_seconds": {
+                        "description": "SnowLuma 凭证缓存秒数",
+                        "hint": "减少重复获取凭证请求。QQ空间接口出现登录态异常时会立即清缓存、自动刷新并重试一次。",
+                        "type": "int",
+                        "slider": {
+                            "min": 0,
+                            "max": 3600,
+                            "step": 30
+                        },
+                        "default": 300
+                    },
+                    "cookies": {
+                        "description": "手动 Cookies（备用）",
+                        "hint": "选填；SnowLuma 自动获取失败时作为备用。建议包含 uin/p_uin、skey、p_skey。选择“仅手动 Cookies”时直接使用这里。",
+                        "type": "text",
+                        "default": ""
+                    },
+                    "send_blue_links": {
+                        "description": "额外发送动态中的外部链接标题和链接",
+                        "type": "bool",
+                        "default": false
+                    }
+                }
+            },
             "shipinhao": {
                 "name": "微信视频号解析器",
                 "items": {
