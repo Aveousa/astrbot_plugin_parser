@@ -1,148 +1,81 @@
-
-<div align="center">
-
-![:name](https://count.getloli.com/@astrbot_plugin_parser?name=astrbot_plugin_parser&theme=minecraft&padding=6&offset=0&align=top&scale=1&pixelated=1&darkmode=auto)
-
 # astrbot_plugin_parser
 
-_✨ 链接解析器 ✨_  
+AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv，解析结果会统一映射为 `ParseResult`，再按配置发送媒体和可选信息卡片。
 
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![AstrBot](https://img.shields.io/badge/AstrBot-3.4%2B-orange.svg)](https://github.com/Soulter/AstrBot)
-[![GitHub](https://img.shields.io/badge/作者-Zhalslar-blue)](https://github.com/Zhalslar)
+## 支持范围
 
-</div>
+| 平台 | 入口 | 主要内容 |
+| --- | --- | --- |
+| Bilibili | BV/av、短链、视频、动态、专栏、直播、收藏夹 | 视频、图文、音频 |
+| 抖音 | 分享短链、视频/图文链接、作品 ID | 视频、图文 |
+| 小红书 | 分享短链、`explore` / `discovery` 链接 | 视频、图文 |
+| Pixiv | 作品链接、`pid`、小说链接 | 插画、漫画、动图、小说 |
 
-## 📖 介绍
+除以上四个平台外的解析器已移除。
 
-当前支持的平台和类型：
+## 卡片配置
 
-| 平台    | 触发的消息形态                    | 视频 | 图集 | 音频 |
-| ------- | --------------------------------- | ---- | ---- | ---- |
-| B 站    | av 号/BV 号/链接/短链/卡片/小程序 | ✅​  | ✅​  | ✅​  |
-| 抖音    | 链接(分享链接，兼容电脑端链接)    | ✅​  | ✅​  | ❌️  |
-| 微博    | 链接(博文，视频，show, 文章)      | ✅​  | ✅​  | ❌️  |
-| 小红书  | 链接(含短链)/卡片                 | ✅​  | ✅​  | ❌️  |
-| 小黑盒  | 链接/卡片                         | ✅​  | ✅​  | ❌️  |
-| 知乎    | 链接/卡片                         | ✅​  | ✅​  | ❌️  |
-| 快手    | 链接(包含标准链接和短链)          | ✅​  | ✅​  | ❌️  |
-| 微信视频号 | 链接(含短链)                   | ✅​  | ✅​  | ❌️  |
-| acfun   | 链接                              | ✅​  | ❌️  | ❌️  |
-| youtube | 链接(含短链)                      | ✅​  | ❌️  | ✅​  |
-| tiktok  | 链接                              | ✅​  | ❌️  | ❌️  |
-| instagram | 链接                            | ✅​  | ✅​  | ❌️  |
-| twitter | 链接                              | ✅​  | ✅​  | ❌️  |
-| Iwara | 链接                              | ✅​  | ✅​  | ❌️  |
-| Pixiv | 链接 / pid                         | ✅​  | ✅​  | ❌️  |
-| QQ空间 | 公开分享链接/卡片                 | ✅​  | ✅​  | ❌️  |
+在 AstrBot 插件配置页可使用以下选项：
 
-本插件目标：凡是链接皆可解析！尽请期待更新（如果可以,请提交PR）
+- `启用卡片功能`：总开关；关闭后不渲染、不发送卡片。
+- `启用卡片渲染`：控制 HTML → PNG 的生成；关闭后原媒体发送逻辑不受影响。
+- `发送渲染卡片`：控制是否把已启用的卡片作为消息发送。
+- `卡片模板`：选择 `标准卡片`（`default`）、`紧凑卡片`（`compact`）或 `自定义模板`。
+- `自定义卡片模板文件名`：选择自定义模板后填写文件名（不含 `.html`）。
+- `表情样式`：默认 `Apple`。iOS Unicode 组合表情、肤色和 ZWJ 表情会以完整序列传递给模板，并优先使用 Apple Emoji 字体回退链。
 
----
+卡片模板采用 Jinja2，布局由 Playwright 驱动的 Chrome Headless Shell 渲染。可将自定义 `*.html` 放到 AstrBot 插件数据目录的 `astrbot_plugin_parser/templates/` 中，在插件页选择“自定义模板”并填写文件名。用户模板会覆盖同名内置模板。
 
-## 🎨 效果图
+完整的数据上下文、模板扩展方式和回归项目见 [卡片渲染与回归说明](docs/CARD_RENDERING.md)。
 
-插件默认启用 PIL 实现的通用媒体卡片渲染，效果图如下
+## 互动统计
 
-<div align="center">
+`ParseResult` 新增以下跨平台字段：
 
-<img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-parser/refs/heads/resources/resources/renderdamine/video.png" width="160" />
-<img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-parser/refs/heads/resources/resources/renderdamine/9_pic.png" width="160" />
-<img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-parser/refs/heads/resources/resources/renderdamine/4_pic.png" width="160" />
-<img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-parser/refs/heads/resources/resources/renderdamine/repost_video.png" width="160" />
-<img src="https://raw.githubusercontent.com/fllesser/nonebot-plugin-parser/refs/heads/resources/resources/renderdamine/repost_2_pic.png" width="160" />
+- `like_count`：点赞数
+- `comment_count`：评论数
+- `favorite_count`：收藏数
+- `share_count`：转发/分享数
 
-</div>
+模板还可使用 `result.engagement` 或简写的 `result.likes`、`result.comments`、`result.favorites`、`result.shares`。没有公开数据的平台字段保持为 `None`，不会被错误显示为 0。
 
----
+## 安装与依赖
 
-## 💿 安装
+通过 AstrBot 插件市场安装即可。独立开发环境需安装 `requirements.txt`，其中卡片渲染新增：
 
-直接在astrbot的插件市场搜索astrbot_plugin_parser，点击安装，等待完成即可
+```bash
+python -m pip install -r requirements.txt
+python -m pip install astrbot
+```
 
-## ⚙️ 配置
+建议先安装插件依赖，再安装 AstrBot 主程序；插件运行时通过 AstrBot 提供的消息组件和配置 API 接入。
 
-请在astrbot的插件配置面板查看并修改
+`playwright` 负责驱动 Chrome Headless Shell 对渲染后的 HTML 做全页 PNG 截图。安装 Python 依赖后还需安装浏览器二进制：
 
-### QQ空间解析器
+```bash
+python -m playwright install chromium-headless-shell
+```
 
-QQ空间解析器作为可选模板提供，支持 `h5.qzone.qq.com/ugc/share`、`mobile.qzone.qq.com/l` 等公开分享链接，并优先解析动态中的原图/原视频。未配置登录态或登录态不可用时，会自动回退到公开分享页可获取的媒体。
+渲染器在插件初始化时启动并复用一个 Headless Shell 进程，避免每张卡片重复启动浏览器。若浏览器未安装、初始化或截图失败，插件会记录错误并跳过卡片发送，但原媒体解析与发送流程不会中断，也不会切换到其他卡片渲染器。
 
-可选登录态来源：
+卡片 PNG、下载的图片/视频和 Emoji 资源均保留在原有插件缓存目录，继续由 `clean_cron` 对应的 `CacheCleaner` 统一执行“删除整个缓存目录后重建”的清理策略；截图期间生成的临时 HTML 会在该次渲染结束后立即删除。
 
-- **SnowLuma 自动（推荐）**：调用 SnowLuma OneBot HTTP `get_credentials`，固定请求 `domain=qzone.qq.com`，短时缓存凭证；QQ空间接口出现登录态异常时会清缓存、重新获取并自动重试一次。
-- **手动 Cookies**：可直接填写 `uin/p_uin`、`skey`、`p_skey` 等 Cookie；SnowLuma 获取失败时也会作为备用登录态。
-- 两种登录态都不可用时，解析器仍保留公开 H5 fallback，不要求用户必须部署 SnowLuma。
+## 指令
 
-SnowLuma HTTP 地址默认为 `http://127.0.0.1:3000`。这里填写的是 **OneBot HTTP API 地址，不是 WebSocket 地址**；如果 HTTP API 配置了 `access_token`，同时填写对应的 SnowLuma Access Token。QQ 本体已掉线或需要重新登录时，需要先恢复 QQ 登录，单独刷新 `p_skey` 无法恢复失效的 QQ 会话。
+| 指令 | 权限 | 说明 |
+| --- | --- | --- |
+| `开启解析` | ADMIN | 开启当前会话解析 |
+| `关闭解析` | ADMIN | 关闭当前会话解析 |
+| `blogin` | ADMIN | Bilibili 扫码登录 |
 
-> QQ空间登录态只用于回查当前公开分享动态对应的媒体详情，不用于绕过动态自身的访问权限。
+## 流程
 
-## 🎉 指令
+1. 从文本、JSON 卡片或引用消息提取链接。
+2. 完成会话过滤、仲裁和防抖。
+3. 由四个保留解析器之一生成 `ParseResult`。
+4. `MessageSender` 根据媒体类型、合并阈值和全局卡片开关构建发送计划。
+5. 需要卡片时，`Renderer` 用 Jinja2 生成 HTML，交由 Playwright 的 Chrome Headless Shell 全页截图为 PNG；失败则记录日志并跳过卡片，随后仍按原有策略发送媒体。
 
-|   指令   |         权限          |        说明        |
-| :------: | :-------------------: |  :---------------: |
-| 开启解析 |      ADMIN            |     开启当前会话的解析功能      |
-| 关闭解析 |      ADMIN            |    关闭当前会话的解析功能      |
-|  blogin  |      ADMIN           |   扫码获取 B 站凭证 |
+## 致谢
 
----
-
-## 🧠 插件工作流程
-
-当插件运行后，每一条消息的处理流程如下：
-
-1. **消息接收**  
-   监听所有消息事件，获取消息链与原始文本内容  
-   - 支持普通文本、链接、卡片（Json 组件）
-
-2. **基础过滤**  
-   - 跳过已被禁用的会话  
-   - 跳过空消息  
-   - 若消息首段为 `@` 且目标不是本 Bot，则不解析
-
-3. **链接提取与匹配**  
-   - 若为卡片消息，先从 Json 中提取 URL  
-   - 使用「关键词 + 正则」双重匹配，定位对应解析器  
-   - 未匹配到解析规则则直接退出
-
-4. **仲裁判定（Emoji Like Arbiter）**  
-   - 仅在 `aiocqhttp` 平台生效  
-   - 通过固定表情进行 Bot 间仲裁  
-   - 未胜出的 Bot 自动放弃解析
-
-5. **防抖判定（Link Debouncer）**  
-   - 对同一会话内的相同链接进行时间窗口限制  
-   - 命中防抖规则则跳过解析，避免短时间重复处理
-
-6. **内容解析**  
-   - 调用对应平台解析器获取媒体信息  
-   - 生成统一的 `ParseResult` 数据结构
-
-7. **媒体下载与消息构建**  
-   - 下载视频 / 图片 / 音频 / 文件  
-   - 根据配置决定音频发送方式  
-   - 可按配置提示下载失败项
-
-8. **卡片渲染（可选）**  
-   - 在非简洁模式或无直传媒体时生成媒体卡片  
-   - 使用 PIL 渲染并缓存图片
-
-9. **消息合并与发送**  
-    - 当消息段数量超过阈值时自动合并为转发消息  
-    - 最终将结果发送到对应会话
-
----
-
-## 🧩 扩展
-
-插件支持自定义解析器，通过继承 `BaseParser` 类并实现 `platform`, `handle` 即可。
-
-示例解析器请看 [示例解析器](https://github.com/Zhalslar/astrbot_plugin_parser/blob/main/core/parsers/example.py)
-
----
-
-## 🎉 致谢
-
-本项目核心代码来自[nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)，请前往原仓库给作者点个Star!
+本项目核心代码来自 [nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)。

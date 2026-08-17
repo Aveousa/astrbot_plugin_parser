@@ -42,6 +42,23 @@ class XHSParser(BaseParser):
             self.headers["cookie"] = self.cookiejar.cookies_str
             self.ios_headers["cookie"] = self.cookiejar.cookies_str
 
+    @staticmethod
+    def _engagement_payload(value: object) -> dict[str, Any]:
+        """兼容小红书不同页面版本的 interactInfo 命名。"""
+        if not isinstance(value, dict):
+            return {}
+        for key in ("interactInfo", "interact_info", "statistics", "stats"):
+            candidate = value.get(key)
+            if isinstance(candidate, dict) and candidate:
+                return candidate
+        # 某些 SSR 版本把互动节点再包在 noteData/data 中。
+        for child in value.values():
+            if isinstance(child, dict):
+                found = XHSParser._engagement_payload(child)
+                if found:
+                    return found
+        return {}
+
     @handle("xhslink.com", r"xhslink\.com/[A-Za-z0-9._?%&+=/#@-]+")
     @handle("xhslink.cn", r"xhslink\.cn/[A-Za-z0-9._?%&+=/#@-]+")
     async def _parse_short_link(self, searched: re.Match[str]):
@@ -116,6 +133,7 @@ class XHSParser(BaseParser):
                 return self.video.video_url
 
         note_detail = convert(note_data, type=NoteDetail)
+        engagement = self.engagement_from_mapping(self._engagement_payload(note_data))
 
         contents = []
         # 添加视频内容
@@ -136,6 +154,10 @@ class XHSParser(BaseParser):
             text=note_detail.desc,
             author=author,
             contents=contents,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )
 
     async def parse_discovery(self, url: str):
@@ -154,6 +176,7 @@ class XHSParser(BaseParser):
         note_data = note_data.get("data", {}).get("noteData", {})
         if not note_data:
             raise ParseException("can't find noteData in noteData.data")
+        engagement = self.engagement_from_mapping(self._engagement_payload(note_data))
 
         class Image(Struct):
             url: str
@@ -211,6 +234,10 @@ class XHSParser(BaseParser):
             contents=contents,
             text=note_data.desc,
             timestamp=note_data.time // 1000,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )
 
     def _extract_initial_state_json(self, html: str) -> dict[str, Any]:

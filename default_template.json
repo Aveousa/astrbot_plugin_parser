@@ -4,23 +4,11 @@
     "enable": true,
     "use_proxy": false,
     "cookies": "",
-    "video_codecs": "AVC",
+    "video_codec_list": ["AVC", "AV1", "HEV"],
     "video_quality": "_720P"
   },
   {
     "__template_key": "douyin",
-    "enable": true,
-    "use_proxy": false,
-    "cookies": ""
-  },
-  {
-    "__template_key": "kuaishou",
-    "enable": true,
-    "use_proxy": false,
-    "cookies": ""
-  },
-  {
-    "__template_key": "weibo",
     "enable": true,
     "use_proxy": false,
     "cookies": ""
@@ -32,11 +20,11 @@
     "cookies": ""
   },
   {
-    "__template_key": "xiaoheihe",
-    "enable": true,
+    "__template_key": "pixiv",
+    "enable": false,
     "use_proxy": false,
     "cookies": "",
-    "show_body_text": true,
-    "video_send_mode": "first"
+    "nsfw": "send",
+    "max_page": 0
   }
 ]

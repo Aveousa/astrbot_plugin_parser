@@ -1,41 +1,13 @@
-from .acfun import AcfunParser
+"""插件支持的解析器。
+
+只导出产品当前支持的四个平台；未导出的旧解析器不会被导入，也不会
+注册到 ``BaseParser``，从而避免无意触发其网络请求或配置项。
+"""
+
 from .base import BaseParser
 from .bilibili import BilibiliParser
 from .douyin import DouyinParser
-from .instagram import InstagramParser
-from .iwara import IwaraParser
-from .kuaishou import KuaiShouParser
-from .ncm import NCMParser
-from .nga import NGAParser
-from .qzone import QZoneParser
-from .shipinhao import ShipinhaoParser
-from .tiktok import TikTokParser
-from .twitter import TwitterParser
-from .weibo import WeiBoParser
-from .xhs import XHSParser
-from .xiaoheihe import XiaoheiheParser
-from .youtube import YouTubeParser
-from .zhihu import ZhihuParser
 from .pixiv import PixivParser
+from .xhs import XHSParser
 
-__all__ = [
-    "BaseParser",
-    "AcfunParser",
-    "BilibiliParser",
-    "DouyinParser",
-    "InstagramParser",
-    "KuaiShouParser",
-    "NCMParser",
-    "NGAParser",
-    "QZoneParser",
-    "TikTokParser",
-    "TwitterParser",
-    "WeiBoParser",
-    "XiaoheiheParser",
-    "XHSParser",
-    "YouTubeParser",
-    "ZhihuParser",
-    "IwaraParser",
-    "ShipinhaoParser",
-    "PixivParser",
-]
+__all__ = ["BaseParser", "BilibiliParser", "DouyinParser", "XHSParser", "PixivParser"]

@@ -17,6 +17,15 @@ class Author(Struct):
     avatar_medium: Avatar | None = None
 
 
+class Statistics(Struct):
+    """抖音作品互动统计（字段可能随接口版本缺省）。"""
+
+    digg_count: int | str | None = None
+    comment_count: int | str | None = None
+    collect_count: int | str | None = None
+    share_count: int | str | None = None
+
+
 class PlayAddr(Struct):
     uri: str | None = None
     url_list: list[str] = field(default_factory=list)
@@ -43,6 +52,7 @@ class VideoData(Struct):
     desc: str
     images: list[Image] | None = None
     video: Video | None = None
+    statistics: Statistics | None = None
 
     @property
     def image_urls(self) -> list[str]:

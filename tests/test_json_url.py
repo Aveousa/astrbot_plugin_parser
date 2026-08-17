@@ -26,26 +26,26 @@ def test_extract_json_url_keeps_existing_detail_qqdocurl_support(utils_module):
     assert utils_module.extract_json_url(data) == "https://example.com/doc"
 
 
-def test_extract_json_url_reads_qzone_miniapp_legacy_url(utils_module):
+def test_extract_json_url_reads_supported_miniapp_legacy_url(utils_module):
     data = {
         "meta": {
             "miniapp": {
-                "legacyUrl": "https%3A%2F%2Fh5.qzone.qq.com%2Fugc%2Fshare%2F%3Fsid%3Dabc"
+                "legacyUrl": "https%3A%2F%2Fwww.douyin.com%2Fvideo%2F1234567890123456789"
             }
         }
     }
     assert utils_module.extract_json_url(data).startswith(
-        "https://h5.qzone.qq.com/ugc/share/?sid=abc"
+        "https://www.douyin.com/video/1234567890123456789"
     )
 
 
-def test_extract_json_url_prefers_nested_qzone_share_over_unrelated_url(utils_module):
+def test_extract_json_url_prefers_nested_supported_share_over_unrelated_url(utils_module):
     data = {
         "prompt": "https://example.com/landing",
         "meta": {
             "detail": {
-                "nested": "open https:\\/\\/mobile.qzone.qq.com\\/l?g=123 now"
+                "nested": "open https:\\/\\/www.xiaohongshu.com\\/explore\\/abc?x=1 now"
             }
         },
     }
-    assert utils_module.extract_json_url(data) == "https://mobile.qzone.qq.com/l?g=123"
+    assert utils_module.extract_json_url(data) == "https://www.xiaohongshu.com/explore/abc?x=1"

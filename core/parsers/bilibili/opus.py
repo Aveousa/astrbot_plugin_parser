@@ -84,7 +84,7 @@ class Module(Struct):
     module_type: str
     module_author: Author | None = None
     module_content: Content | None = None
-    # module_stat: OpusStat | None = None
+    module_stat: dict[str, Any] | None = None
 
 
 class Basic(Struct):
@@ -117,6 +117,14 @@ class OpusItem(Struct):
             module.module_author for module in self.item.modules if module.module_author
         )
         return author_module.name, author_module.face
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        """提取图文动态的互动统计节点。"""
+        for module in self.item.modules:
+            if module.module_stat:
+                return module.module_stat
+        return {}
 
     @property
     def timestamp(self) -> int | None:

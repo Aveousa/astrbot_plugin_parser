@@ -1,13 +1,11 @@
-from asyncio import Task, TimeoutError, create_task, gather, sleep, to_thread
+from asyncio import Task, TimeoutError, create_task, gather, sleep
 from collections.abc import Callable, Coroutine
 from functools import wraps
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
 import aiofiles
-import yt_dlp
 from aiohttp import ClientError, ClientSession, ClientTimeout
-from msgspec import Struct, convert
 from tqdm.asyncio import tqdm
 
 from astrbot.api import logger
@@ -16,12 +14,10 @@ from .config import PluginConfig
 from .constants import COMMON_HEADER
 from .exception import (
     DownloadException,
-    DurationLimitException,
-    ParseException,
     SizeLimitException,
     ZeroSizeException,
 )
-from .utils import LimitedSizeDict, generate_file_name, merge_av, safe_unlink
+from .utils import generate_file_name, merge_av, safe_unlink
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -39,38 +35,13 @@ def auto_task(func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, Task[T]]
     return wrapper
 
 
-class VideoInfo(Struct):
-    title: str
-    """标题"""
-    channel: str
-    """频道名称"""
-    uploader: str
-    """上传者 id"""
-    duration: int
-    """时长"""
-    timestamp: int
-    """发布时间戳"""
-    thumbnail: str
-    """封面图片"""
-    description: str
-    """简介"""
-    channel_id: str
-    """频道 id"""
-
-    @property
-    def author_name(self) -> str:
-        return f"{self.channel}@{self.uploader}"
-
-
 class Downloader:
-    """下载器，支持youtube-dlp 和 流式下载"""
+    """保留平台共用的流式媒体下载器。"""
 
     def __init__(self, config: PluginConfig):
         self.cfg = config
         self.max_size = self.cfg.source_max_size
         self.default_headers: dict[str, str] = COMMON_HEADER.copy()
-        # 视频信息缓存
-        self.info_cache: LimitedSizeDict[str, VideoInfo] = LimitedSizeDict()
         # 用于流式下载的客户端
         self.client = ClientSession(
             timeout=ClientTimeout(total=self.cfg.download_timeout)
@@ -261,186 +232,3 @@ class Downloader:
         )
         await merge_av(v_path=v_path, a_path=a_path, output_path=output_path)
         return output_path
-
-    async def ytdlp_extract_info(
-        self,
-        url: str,
-        *,
-        cookiefile: Path | None = None,
-        headers: dict[str, str] | None = None,
-        proxy: str | None = None,
-        format: str | None = None,
-    ) -> VideoInfo:
-        if (info := self.info_cache.get(url)) is not None:
-            return info
-        opts = {
-            "quiet": True,
-            "skip_download": True,
-            "http_headers": headers or self.default_headers,
-        }
-        if proxy:
-            opts["proxy"] = proxy
-        if cookiefile and cookiefile.is_file():
-            opts["cookiefile"] = str(cookiefile)
-        if format:
-            opts["format"] = format
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-            raw = await to_thread(ydl.extract_info, url, download=False)
-            if not raw:
-                raise ParseException("获取视频信息失败")
-        info = convert(raw, VideoInfo)
-        self.info_cache[url] = info
-        return info
-
-    async def ytdlp_extract_raw(
-        self,
-        url: str,
-        *,
-        cookiefile: Path | None = None,
-        headers: dict[str, str] | None = None,
-        proxy: str | None = None,
-        format: str | None = None,
-    ) -> dict[str, Any]:
-        opts = {
-            "quiet": True,
-            "skip_download": True,
-            "http_headers": headers or self.default_headers,
-        }
-        if proxy:
-            opts["proxy"] = proxy
-        if cookiefile and cookiefile.is_file():
-            opts["cookiefile"] = str(cookiefile)
-        if format:
-            opts["format"] = format
-
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-            raw = await to_thread(ydl.extract_info, url, download=False)
-            if not isinstance(raw, dict):
-                raise ParseException("yt-dlp 返回数据异常")
-            return raw  # type: ignore
-
-    @auto_task
-    async def ytdlp_download_video(
-        self,
-        url: str,
-        *,
-        cookiefile: Path | None = None,
-        headers: dict[str, str] | None = None,
-        proxy: str | None = None,
-        format: str | None = None,
-        node: bool = False,
-    ) -> Path:
-        info = await self.ytdlp_extract_info(
-            url, cookiefile=cookiefile, headers=headers, proxy=proxy
-        )
-        if info.duration > self.cfg.max_duration:
-            raise DurationLimitException
-
-        video_path = self.cfg.cache_dir / generate_file_name(url, ".mp4")
-        if video_path.exists():
-            return video_path
-
-        opts = {
-            "outtmpl": str(video_path),
-            "merge_output_format": "mp4",
-            # "format": f"bv[filesize<={info.duration // 10 + 10}M]+ba/b[filesize<={info.duration // 8 + 10}M]",
-            # "format": "bv*[height<=720]+ba/b[height<=720]",
-            "format": format or "best",
-            "postprocessors": [
-                {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-            ],
-            "http_headers": headers or self.default_headers,
-        }
-        if proxy:
-            opts["proxy"] = proxy
-        if cookiefile and cookiefile.is_file():
-            opts["cookiefile"] = str(cookiefile)
-        if node:
-            opts["js_runtimes"] = {"node": {}}
-
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-            await to_thread(ydl.download, [url])
-        return video_path
-
-    @auto_task
-    async def ytdlp_download_video_relaxed(
-        self,
-        url: str,
-        *,
-        cookiefile: Path | None = None,
-        headers: dict[str, str] | None = None,
-        proxy: str | None = None,
-        format: str | None = None,
-        node: bool = False,
-    ) -> Path:
-        file_stem = generate_file_name(url)
-        video_path = self.cfg.cache_dir / f"{file_stem}.mp4"
-        if video_path.exists():
-            return video_path
-
-        opts = {
-            "outtmpl": str(self.cfg.cache_dir / file_stem) + ".%(ext)s",
-            "merge_output_format": "mp4",
-            "format": format or None,
-            "postprocessors": [
-                {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}
-            ],
-            "http_headers": headers or self.default_headers,
-            "quiet": True,
-            "no_warnings": True,
-        }
-        if not opts["format"]:
-            opts.pop("format")
-        if proxy:
-            opts["proxy"] = proxy
-        if cookiefile and cookiefile.is_file():
-            opts["cookiefile"] = str(cookiefile)
-        if node:
-            opts["js_runtimes"] = {"node": {}}
-
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-            await to_thread(ydl.download, [url])
-        if video_path.exists():
-            return video_path
-
-        candidates = sorted(self.cfg.cache_dir.glob(f"{file_stem}*.mp4"))
-        if candidates:
-            return candidates[0]
-        raise DownloadException("yt-dlp 视频下载失败")
-
-    @auto_task
-    async def ytdlp_download_audio(
-        self,
-        url: str,
-        *,
-        cookiefile: Path | None,
-        headers: dict[str, str] | None = None,
-        proxy: str | None = None,
-        format: str | None = None,
-    ) -> Path:
-        file_name = generate_file_name(url)
-        audio_path = self.cfg.cache_dir / f"{file_name}.flac"
-        if audio_path.exists():
-            return audio_path
-
-        opts = {
-            "outtmpl": str(self.cfg.cache_dir / file_name) + ".%(ext)s",
-            "format": format or "bestaudio/best",
-            "postprocessors": [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "flac",
-                    "preferredquality": "0",
-                }
-            ],
-            "cookiefile": None,
-            "http_headers": headers or self.default_headers,
-        }
-        if proxy:
-            opts["proxy"] = proxy
-        if cookiefile and cookiefile.is_file():
-            opts["cookiefile"] = str(cookiefile)
-
-        with yt_dlp.YoutubeDL(opts) as ydl:  # type: ignore
-            await to_thread(ydl.download, [url])
-        return audio_path

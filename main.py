@@ -50,6 +50,9 @@ class ParserPlugin(Star):
         """加载、重载插件时触发"""
         # 加载渲染器资源
         await asyncio.to_thread(Renderer.load_resources)
+        # 预热并复用 Playwright 的 Chrome Headless Shell。启动失败仅会让
+        # 卡片功能跳过，不影响解析器注册和原媒体发送。
+        await self.renderer.start()
         # 注册解析器
         self._register_parser()
 
@@ -61,6 +64,9 @@ class ParserPlugin(Star):
         unique_parsers = set(self.parser_map.values())
         for parser in unique_parsers:
             await parser.close_session()
+        # 先释放浏览器页面和文件句柄，再停止清理任务；缓存 PNG 仍由既有
+        # CacheCleaner 周期统一清理。
+        await self.renderer.close()
         # 关缓存清理器
         await self.cleaner.stop()
 
@@ -129,7 +135,6 @@ class ParserPlugin(Star):
         if not chain:
             return
 
-        seg1 = chain[0]
         text = event.message_str
 
         # 指定机制：专门@其他bot的消息不解析

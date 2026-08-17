@@ -32,11 +32,19 @@ class Author(Struct):
     avatar_thumb: Avatar
 
 
+class Statistics(Struct):
+    digg_count: int | str | None = None
+    comment_count: int | str | None = None
+    collect_count: int | str | None = None
+    share_count: int | str | None = None
+
+
 class SlidesData(Struct):
     author: Author
     desc: str
     create_time: int
     images: list[Image]
+    statistics: Statistics | None = None
 
     @property
     def name(self) -> str:

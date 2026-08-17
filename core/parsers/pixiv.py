@@ -490,6 +490,7 @@ class PixivParser(BaseParser):
         title = body.get("title", "")
         text = PixivHelper.build_text(body)
         character_count = int(body.get("characterCount", 0))
+        engagement = self.engagement_from_mapping(body)
 
         # 封面
         cover_contents = await self._download_cover(
@@ -526,6 +527,10 @@ class PixivParser(BaseParser):
             url=f"{PIXIV_BASE}/novel/show.php?id={nid}",
             contents=cover_contents,
             send_groups=send_groups,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
             extra=extra,
         )
 
@@ -545,6 +550,7 @@ class PixivParser(BaseParser):
         illust_type = int(body.get("illustType", 0))
         cover_url = body.get("urls", {}).get("regular", "")
         create_date = body.get("createDate", "")
+        engagement = self.engagement_from_mapping(body)
 
         # 封面（R18 时模糊处理）
         cover_contents = await self._download_cover(cover_url, blur)
@@ -631,6 +637,10 @@ class PixivParser(BaseParser):
             contents=cover_contents,
             send_groups=send_groups,
             timestamp=PixivHelper.parse_timestamp(create_date),
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
             extra=extra,
         )
 
@@ -649,6 +659,7 @@ class PixivParser(BaseParser):
         page_count = int(body.get("pageCount", 1))
         cover_url = body.get("urls", {}).get("regular", "")
         create_date = body.get("createDate", "")
+        engagement = self.engagement_from_mapping(body)
 
         # 系列信息
         extra_info = await self._get_series_info(body, user_id)
@@ -676,6 +687,10 @@ class PixivParser(BaseParser):
                     SendGroup(contents=cover_contents, render_card=False, force_merge=False),
                 ],
                 timestamp=PixivHelper.parse_timestamp(create_date),
+                like_count=engagement.likes,
+                comment_count=engagement.comments,
+                favorite_count=engagement.favorites,
+                share_count=engagement.shares,
                 extra=extra,
             )
 
@@ -717,5 +732,9 @@ class PixivParser(BaseParser):
             contents=cover_contents,
             send_groups=send_groups,
             timestamp=PixivHelper.parse_timestamp(create_date),
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
             extra=extra,
         )

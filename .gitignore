@@ -1,3 +1,8 @@
 __pycache__/
 core/test/
 /tests
+!/tests/
+!/tests/*.py
+/.idea/
+/data/
+/.venv/

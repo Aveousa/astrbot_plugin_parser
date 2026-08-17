@@ -55,6 +55,41 @@ class MessageSender:
         self.cfg = config
         self.renderer = renderer
 
+    def _card_render_enabled(self) -> bool:
+        """读取全局卡片渲染开关，并兼容未迁移的旧配置对象。"""
+        value = getattr(self.cfg, "render_card_enabled", None)
+        if value is None:
+            value = getattr(self.cfg, "card_render_enabled", True)
+            value = bool(value and getattr(self.cfg, "card_enabled", True))
+        return bool(value)
+
+    def _card_send_enabled(self) -> bool:
+        """读取全局卡片发送开关，并兼容未迁移的旧配置对象。"""
+        value = getattr(self.cfg, "send_card_enabled", None)
+        if value is None:
+            value = getattr(self.cfg, "card_send_enabled", True)
+            value = bool(value and getattr(self.cfg, "card_enabled", True))
+        return bool(value)
+
+    async def _render_card_safely(self, result: ParseResult) -> Path | None:
+        """隔离卡片渲染异常，确保不会阻断原媒体发送流程。
+
+        ``Renderer.render_card`` 本身会捕获已知渲染错误；发送器再保留一层
+        边界保护，兼容自定义 Renderer、插件热重载或第三方模板过滤器抛出
+        的未预期异常。卡片失败只意味着没有卡片消息段，媒体仍按原计划处理。
+        """
+        try:
+            return await self.renderer.render_card(result)
+        except Exception as exc:
+            # AstrBot logger 提供 exception；测试桩或旧版本可能只有 error。
+            log_exception = getattr(logger, "exception", None)
+            message = f"卡片渲染异常，已跳过卡片发送: {exc}"
+            if callable(log_exception):
+                log_exception(message)
+            else:
+                logger.error(message)
+            return None
+
     def _to_file_uri(self, path: Path) -> str:
         if not path.is_absolute():
             path = path.resolve()
@@ -103,13 +138,16 @@ class MessageSender:
                 case _:
                     light.append(cont)
 
-        # 仅在“单一重媒体且无其他内容”时，才允许渲染卡片
+        # 仅在“单一重媒体且无其他内容”时，才允许渲染卡片。SendGroup
+        # 可表达平台的特殊分组需求，但全局开关始终拥有更高优先级。
         is_single_heavy = len(heavy) == 1 and not light
         render_card = is_single_heavy and self.cfg.single_heavy_render_card
         if render_card_override is not None:
             render_card = render_card_override
+        render_card = render_card and self._card_render_enabled()
+        send_card = render_card and self._card_send_enabled()
         # 实际消息段数量（卡片也算一个段）
-        seg_count = len(light) + len(heavy) + (1 if render_card else 0)
+        seg_count = len(light) + len(heavy) + (1 if send_card else 0)
 
         # 达到阈值后，强制合并转发，避免刷屏
         force_merge = seg_count >= self.cfg.forward_threshold
@@ -120,10 +158,23 @@ class MessageSender:
             "light": light,
             "heavy": heavy,
             "render_card": render_card,
+            "send_card": send_card,
             # 预览卡片：仅在“渲染卡片 + 不合并”时独立发送
-            "preview_card": render_card and not force_merge,
+            "preview_card": send_card and not force_merge,
             "force_merge": force_merge,
+            # 渲染失败时，只有自动计算的合并策略可以按实际媒体数量重算；
+            # 平台通过 SendGroup 明确指定的 force_merge 仍然保持原语义。
+            "force_merge_explicit": force_merge_override is not None,
         }
+
+    def _disable_failed_card(self, plan: dict) -> None:
+        """移除失败卡片，并避免失败的附加段改变媒体发送策略。"""
+        plan["send_card"] = False
+        plan["render_card"] = False
+        plan["preview_card"] = False
+        if not plan.get("force_merge_explicit", False):
+            media_count = len(plan.get("light", ())) + len(plan.get("heavy", ()))
+            plan["force_merge"] = media_count >= self.cfg.forward_threshold
 
     async def _send_preview_card(
         self,
@@ -142,8 +193,12 @@ class MessageSender:
         if not plan["preview_card"]:
             return
 
-        if image_path := await self.renderer.render_card(result):
-            await event.send(event.chain_result([self._image_from_path(image_path)]))
+        if image_path := await self._render_card_safely(result):
+            try:
+                await event.send(event.chain_result([self._image_from_path(image_path)]))
+            except Exception as exc:
+                # 卡片预览是附加消息；预览发送失败也不能阻断后续媒体。
+                logger.error(f"卡片预览发送失败，继续发送媒体: {exc}")
 
     async def _build_segments(
         self,
@@ -160,9 +215,15 @@ class MessageSender:
         segs: list[BaseMessageComponent] = []
 
         # 合并转发时，卡片以内联形式作为一个消息段参与合并
-        if plan["render_card"] and plan["force_merge"]:
-            if image_path := await self.renderer.render_card(result):
-                segs.append(self._image_from_path(image_path))
+        if plan["send_card"] and plan["force_merge"]:
+            if image_path := await self._render_card_safely(result):
+                try:
+                    segs.append(self._image_from_path(image_path))
+                except Exception as exc:
+                    logger.error(f"卡片消息段创建失败，继续发送媒体: {exc}")
+                    self._disable_failed_card(plan)
+            else:
+                self._disable_failed_card(plan)
 
         # 轻媒体处理
         for cont in plan["light"]:

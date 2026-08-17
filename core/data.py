@@ -3,7 +3,102 @@ from asyncio import Task
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Mapping, TypedDict
+
+
+def _coerce_count(value: Any) -> int | None:
+    """把平台返回的计数值归一化为整数。
+
+    不同平台既可能返回整数，也可能返回 ``1.2万``、``1,234`` 或空值。
+    解析层统一使用这个小函数，模板层就不需要理解平台 API 的差异。
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    multiplier = 1
+    if text[-1:] in ("万", "w", "W"):
+        multiplier, text = 10_000, text[:-1]
+    elif text[-1:] in ("亿",):
+        multiplier, text = 100_000_000, text[:-1]
+    try:
+        return int(float(text) * multiplier)
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class EngagementStats:
+    """跨平台统一的互动统计。
+
+    ``None`` 表示平台没有提供该项数据，和真实的 0 有意区分，模板可以
+    选择隐藏未知字段。
+    """
+
+    likes: int | None = None
+    comments: int | None = None
+    favorites: int | None = None
+    shares: int | None = None
+
+    @classmethod
+    def from_mapping(
+        cls, value: Mapping[str, Any] | None, *, _depth: int = 0
+    ) -> "EngagementStats":
+        if not value:
+            return cls()
+
+        # API 常见的嵌套形式：{count: 12}、{count_text: "1.2万"}。
+        def pick(*names: str) -> int | None:
+            for name in names:
+                if name in value:
+                    raw = value[name]
+                    if isinstance(raw, Mapping):
+                        raw = raw.get("count", raw.get("count_text", raw.get("value")))
+                    parsed = _coerce_count(raw)
+                    if parsed is not None:
+                        return parsed
+            return None
+
+        result = cls(
+            likes=pick("likes", "like", "like_count", "likeCount", "digg_count", "likedCount"),
+            comments=pick("comments", "comment", "comment_count", "commentCount", "reply", "reply_count"),
+            favorites=pick(
+                "favorites",
+                "favorite",
+                "favorite_count",
+                "favoriteCount",
+                "collect_count",
+                "collectedCount",
+                "bookmarkCount",
+            ),
+            shares=pick("shares", "share", "share_count", "shareCount", "forward", "forward_count"),
+        )
+        if (
+            _depth < 4
+            and result.likes is None
+            and result.comments is None
+            and result.favorites is None
+            and result.shares is None
+        ):
+            for child in value.values():
+                if isinstance(child, Mapping):
+                    nested = cls.from_mapping(child, _depth=_depth + 1)
+                    if any(item is not None for item in nested.as_dict().values()):
+                        return nested
+        return result
+
+    def as_dict(self) -> dict[str, int | None]:
+        return {
+            "likes": self.likes,
+            "comments": self.comments,
+            "favorites": self.favorites,
+            "shares": self.shares,
+        }
 
 
 def repr_path_task(path_task: Path | Task[Path]) -> str:
@@ -195,6 +290,15 @@ class ParseResult:
     """转发的内容"""
     render_image: Path | None = None
     """渲染图片"""
+    # 互动统计追加在原有字段之后，保持旧版位置参数调用的语义不变。
+    like_count: int | None = None
+    """点赞数"""
+    comment_count: int | None = None
+    """评论数"""
+    favorite_count: int | None = None
+    """收藏数"""
+    share_count: int | None = None
+    """转发/分享数"""
     _resource_id: str | None = field(init=False, repr=False)
     """资源 ID"""
 
@@ -219,6 +323,63 @@ class ParseResult:
     @property
     def extra_info(self) -> str | None:
         return self.extra.get("info")
+
+    @property
+    def engagement(self) -> EngagementStats:
+        """以统一对象暴露互动统计，供模板和扩展使用。"""
+        return EngagementStats(
+            likes=self.like_count,
+            comments=self.comment_count,
+            favorites=self.favorite_count,
+            shares=self.share_count,
+        )
+
+    @property
+    def stats(self) -> EngagementStats:
+        """``engagement`` 的兼容别名，方便模板写成 result.stats。"""
+        return self.engagement
+
+    # 兼容更短的字段命名，模板可以使用 result.likes 等表达式。
+    @property
+    def likes(self) -> int | None:
+        return self.like_count
+
+    @property
+    def comments(self) -> int | None:
+        return self.comment_count
+
+    @property
+    def favorites(self) -> int | None:
+        return self.favorite_count
+
+    @property
+    def shares(self) -> int | None:
+        return self.share_count
+
+    @property
+    def likes_count(self) -> int | None:
+        return self.like_count
+
+    @property
+    def comments_count(self) -> int | None:
+        return self.comment_count
+
+    @property
+    def favorites_count(self) -> int | None:
+        return self.favorite_count
+
+    @property
+    def shares_count(self) -> int | None:
+        return self.share_count
+
+    @property
+    def collect_count(self) -> int | None:
+        """部分平台把收藏称为 collect，提供只读兼容别名。"""
+        return self.favorite_count
+
+    @property
+    def forward_count(self) -> int | None:
+        return self.share_count
 
     @property
     def video_contents(self) -> list[VideoContent]:
@@ -355,5 +516,9 @@ class ParseResultKwargs(TypedDict, total=False):
     timestamp: int | None
     url: str | None
     author: Author | None
+    like_count: int | None
+    comment_count: int | None
+    favorite_count: int | None
+    share_count: int | None
     extra: dict[str, Any]
     repost: ParseResult | None

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import zoneinfo
 from collections.abc import Mapping, MutableMapping
+from datetime import timezone
 from pathlib import Path
 from types import MappingProxyType, UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
@@ -155,17 +156,10 @@ class ParserItem(ConfigNode):
     enable: bool
     use_proxy: bool
     cookies: str | None
-    show_body_text: bool | None
-    video_send_mode: str | None
     video_codec_list: list | None
     video_quality: str | None
     nsfw: str | None
     max_page: int | None
-    send_blue_links: bool | None
-    qzone_credential_source: str | None
-    snowluma_http_url: str | None
-    snowluma_access_token: str | None
-    snowluma_credential_cache_seconds: int | None
 
     @property
     def name(self) -> str:
@@ -173,33 +167,24 @@ class ParserItem(ConfigNode):
 
 
 class ParserConfig(ConfigNodeContainer):
-    acfun: ParserItem
+    SUPPORTED = frozenset({"bilibili", "douyin", "xhs", "pixiv"})
     bilibili: ParserItem
     douyin: ParserItem
-    instagram: ParserItem
-    kuaishou: ParserItem
-    ncm: ParserItem
-    nga: ParserItem
-    tiktok: ParserItem
-    twitter: ParserItem
-    weibo: ParserItem
-    xiaoheihe: ParserItem
-    zhihu: ParserItem
     xhs: ParserItem
-    youtube: ParserItem
-    iwara: ParserItem
-    shipinhao: ParserItem
     pixiv: ParserItem
-    qzone: ParserItem
 
     def __init__(self, nodes: list[dict[str, Any]]):
         super().__init__(nodes, item_cls=ParserItem)
 
     def platforms(self) -> list[str]:
-        return list(self._nodes.keys())
+        return [key for key in self._nodes if key in self.SUPPORTED]
 
     def enabled_platforms(self) -> list[str]:
-        return [k for k, v in self._nodes.items() if getattr(v, "enable", True)]
+        return [
+            k
+            for k, v in self._nodes.items()
+            if k in self.SUPPORTED and getattr(v, "enable", True)
+        ]
 
 
 class PluginConfig(ConfigNode):
@@ -217,6 +202,15 @@ class PluginConfig(ConfigNode):
     single_heavy_render_card: bool
     forward_threshold: int
 
+    # 卡片统一策略。card_enabled 是总开关，两个细分开关分别控制渲染
+    # 和发送，保留细分项便于后续按渠道扩展。
+    card_enabled: bool
+    card_render_enabled: bool
+    card_send_enabled: bool
+    card_template: str
+    card_custom_template: str | None
+    emoji_style: str
+
     show_download_fail_tip: bool
     download_timeout: int
     download_retry_times: int
@@ -229,15 +223,30 @@ class PluginConfig(ConfigNode):
     parsers_template: list[dict[str, Any]]
 
     _plugin_name = "astrbot_plugin_parser"
+    _supported_parser_names = ("bilibili", "douyin", "xhs", "pixiv")
 
     def __init__(self, config: AstrBotConfig, context: Context):
+        # 旧版本配置没有卡片字段时安全补默认值，避免 ConfigNode 对缺失
+        # 字段返回 None 进而改变旧的发送策略。
+        defaults = {
+            "card_enabled": True,
+            "card_render_enabled": True,
+            "card_send_enabled": True,
+            "card_template": "default",
+            "card_custom_template": "",
+            "emoji_style": "APPLE",
+        }
+        defaults_changed = False
+        for key, value in defaults.items():
+            if config.get(key) is None:
+                config[key] = value
+                defaults_changed = True
         super().__init__(config)
         self.context = context
         self.admins_id = self.context.get_config().get("admins_id", [])
 
         # ---------- 内置配置 ----------
-        self.emoji_cdn = "https://cdn.jsdelivr.net/npm/emoji-datasource-facebook@14.0.0/img/facebook/64/"
-        self.emoji_style = "FACEBOOK"  # 可选：APPLE、FACEBOOK、GOOGLE、TWITTER
+        self.emoji_cdn = self._data.get("emoji_cdn", "https://emojicdn.elk.sh")
 
         # ---------- 派生字段 ----------
         self.proxy = self.proxy or None
@@ -245,9 +254,11 @@ class PluginConfig(ConfigNode):
         self.max_size = self.source_max_size * 1024 * 1024
 
         tz = context.get_config().get("timezone")
-        self.timezone = (
-            zoneinfo.ZoneInfo(tz) if tz else zoneinfo.ZoneInfo("Asia/Shanghai")
-        )
+        try:
+            self.timezone = zoneinfo.ZoneInfo(tz or "Asia/Shanghai")
+        except zoneinfo.ZoneInfoNotFoundError:
+            # 精简开发环境可能没有 tzdata；不影响解析和渲染，退回 UTC。
+            self.timezone = timezone.utc
 
         # ---------- 路径 ----------
         self.data_dir = Path(get_astrbot_plugin_data_path()) / self._plugin_name
@@ -256,7 +267,18 @@ class PluginConfig(ConfigNode):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cookie_dir = self.data_dir / "cookies"
         self.cookie_dir.mkdir(parents=True, exist_ok=True)
-        self.default_template_file = self.plugin_dir / "default_template.json"
+        installed_template_file = self.plugin_dir / "default_template.json"
+        bundled_template_file = Path(__file__).parent.parent / "default_template.json"
+        self.default_template_file = (
+            installed_template_file
+            if installed_template_file.exists()
+            else bundled_template_file
+        )
+        self.template_dir = self.data_dir / "templates"
+        self.template_dir.mkdir(parents=True, exist_ok=True)
+
+        if defaults_changed:
+            self.save_config()
 
         # ---------- Parser ----------
         if not self.parsers_template:
@@ -265,13 +287,94 @@ class PluginConfig(ConfigNode):
             )
             self.save_config()
 
+        self._migrate_parser_template()
+
         self.parser = ParserConfig(self.parsers_template)
+
+    @property
+    def cards_enabled(self) -> bool:
+        """卡片总开关及两个细分开关均打开时才允许卡片。"""
+        return bool(
+            self._data.get("card_enabled", True)
+            and self._data.get("card_render_enabled", True)
+            and self._data.get("card_send_enabled", True)
+        )
+
+    # 兼容可能在外部模板/旧配置中使用的命名。
+    @property
+    def render_card_enabled(self) -> bool:
+        return bool(self._data.get("card_enabled", True) and self._data.get("card_render_enabled", True))
+
+    @property
+    def send_card_enabled(self) -> bool:
+        return bool(self._data.get("card_enabled", True) and self._data.get("card_send_enabled", True))
+
+    def available_card_templates(self) -> list[str]:
+        """返回内置与用户模板名称，供配置页和运行时校验使用。"""
+        names = {"default", "compact"}
+        for directory in (self.template_dir, self.plugin_dir / "templates"):
+            if directory.is_dir():
+                names.update(path.stem for path in directory.glob("*.html"))
+        return sorted(names)
+
+    def _migrate_parser_template(self) -> None:
+        """移除旧平台配置，并为四个保留平台补齐最新默认字段。"""
+        defaults = self.load_parser_template(self.default_template_file)
+        if not any(
+            isinstance(item, dict)
+            and item.get("__template_key") in self._supported_parser_names
+            for item in defaults
+        ):
+            # 安装目录若仍是旧版本模板，使用随当前代码发布的模板作为迁移基准。
+            bundled = Path(__file__).parent.parent / "default_template.json"
+            if bundled != self.default_template_file:
+                defaults = self.load_parser_template(bundled)
+        if not defaults:
+            return
+        existing = {
+            str(item.get("__template_key")): item
+            for item in self.parsers_template
+            if isinstance(item, dict)
+            and item.get("__template_key") in self._supported_parser_names
+        }
+        normalized: list[dict[str, Any]] = []
+        for default in defaults:
+            if not isinstance(default, dict):
+                continue
+            key = str(default.get("__template_key", ""))
+            if key not in self._supported_parser_names:
+                # 安装目录可能残留旧版本模板；不要把已移除平台重新写回配置。
+                continue
+            merged = default.copy()
+            # 保留用户已填写的 cookie、代理等有效字段；默认值补新字段。
+            if old := existing.get(key):
+                merged.update(old)
+                # 早期默认模板曾使用单值 ``video_codecs``；迁移为当前
+                # 配置页的列表字段，避免升级后丢失用户的编码偏好。
+                if key == "bilibili":
+                    legacy_codecs = old.get("video_codecs")
+                    if "video_codec_list" not in old and legacy_codecs:
+                        merged["video_codec_list"] = (
+                            legacy_codecs
+                            if isinstance(legacy_codecs, list)
+                            else [legacy_codecs]
+                        )
+                    merged.pop("video_codecs", None)
+            normalized.append(merged)
+
+        if not normalized:
+            return
+        if list(self.parsers_template) != normalized:
+            self.parsers_template[:] = normalized
+            self.save_config()
 
     @staticmethod
     def load_parser_template(file: Path) -> list[dict[str, Any]]:
         try:
             with file.open(encoding="utf-8-sig") as f:
                 template = json.loads(f.read())
+                if not isinstance(template, list):
+                    raise TypeError("解析器模板根节点必须为列表")
                 logger.info(f"[parser] 加载模板成功: {file}")
                 return template
         except Exception as e:

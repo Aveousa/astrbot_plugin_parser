@@ -2,31 +2,11 @@ import asyncio
 import hashlib
 import json
 import re
-from collections import OrderedDict
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from astrbot.api import logger
-
-K = TypeVar("K")
-V = TypeVar("V")
-
-
-class LimitedSizeDict(OrderedDict[K, V]):
-    """
-    定长字典
-    """
-
-    def __init__(self, *args, max_size=20, **kwargs):
-        self.max_size = max_size
-        super().__init__(*args, **kwargs)
-
-    def __setitem__(self, key: K, value: V):
-        super().__setitem__(key, value)
-        if len(self) > self.max_size:
-            self.popitem(last=False)  # 移除最早添加的项
-
 
 async def safe_unlink(path: Path):
     """
@@ -284,19 +264,18 @@ def extract_json_url(data: dict | str) -> str | None:
     if not candidates:
         return None
 
-    # QZone 分享卡优先，之后保持常见分享短链优先级。
+    # 仅为当前支持的平台保留分享链接优先级。
     preferred_keywords = (
-        "mobile.qzone.qq.com/l",
-        "h5.qzone.qq.com/ugc/share",
-        "m.qzone.qq.com",
-        "user.qzone.qq.com",
-        "qzone.qq.com",
         "b23.tv",
         "bili2233.cn",
         "bilibili.com",
+        "v.douyin.com",
+        "jx.douyin.com",
+        "douyin.com",
         "xhslink.cn",
         "xhslink.com",
         "xiaohongshu.com",
+        "pixiv.net",
     )
     for keyword in preferred_keywords:
         for url in candidates:

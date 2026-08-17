@@ -201,6 +201,14 @@ class BilibiliParser(BaseParser):
             page_info.cover,
             page_info.duration,
         )
+        engagement = self.engagement_from_mapping(
+            {
+                "like": video_info.stat.like,
+                "reply": video_info.stat.reply,
+                "favorite": video_info.stat.favorite,
+                "share": video_info.stat.share,
+            }
+        )
 
         return self.result(
             url=url,
@@ -209,6 +217,10 @@ class BilibiliParser(BaseParser):
             text=text,
             author=author,
             contents=[video_content],
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
             extra={"info": ai_summary},
         )
 
@@ -226,6 +238,7 @@ class BilibiliParser(BaseParser):
 
         dynamic_info = convert(await dynamic_.get_info(), DynamicData).item
         author = self.create_author(dynamic_info.name, dynamic_info.avatar)
+        engagement = self.engagement_from_mapping(dynamic_info.modules.module_stat or {})
 
         # 下载图片
         contents: list[MediaContent] = []
@@ -241,6 +254,10 @@ class BilibiliParser(BaseParser):
             timestamp=dynamic_info.timestamp,
             author=author,
             contents=contents,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )
 
     async def parse_opus(self, opus_id: int):
@@ -277,6 +294,7 @@ class BilibiliParser(BaseParser):
         # 转换为结构体
         opus_data = convert(opus_info, OpusItem)
         logger.debug(f"opus_data: {opus_data}")
+        engagement = self.engagement_from_mapping(opus_data.stats)
         author = self.create_author(*opus_data.name_avatar)
         # 按顺序处理图文内容（参考 parse_read 的逻辑）
         contents: list[MediaContent] = []
@@ -297,6 +315,10 @@ class BilibiliParser(BaseParser):
             timestamp=opus_data.timestamp,
             contents=contents,
             text=current_text.strip(),
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )
 
     async def parse_live(self, room_id: int):

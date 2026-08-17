@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: 760px 2000px; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px; color: #242424; background: #fff;
+           font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+           font-size: 17px; line-height: 1.55; }
+    .card { width: 704px; }
+    .header { display: flex; align-items: center; gap: 14px; padding-bottom: 16px;
+              border-bottom: 1px solid #ececf0; }
+    .avatar { width: 58px; height: 58px; border-radius: 50%; object-fit: cover; background: #eef1f5; }
+    .author-name { font-size: 21px; font-weight: 700; }
+    .platform { color: #6f7782; font-size: 14px; margin-top: 2px; }
+    .time { color: #9aa1ab; font-size: 13px; }
+    h1 { margin: 18px 0 8px; font-size: 28px; line-height: 1.3; }
+    .text, .extra { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .text { margin: 8px 0 16px; }
+    .extra { color: #818894; font-size: 14px; margin-top: 12px; }
+    .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 14px 0; }
+    .media-grid.single { display: block; }
+    .media { width: 100%; max-height: 560px; object-fit: cover; border-radius: 8px; }
+    .media-grid.single .media { max-height: 680px; object-fit: contain; }
+    .graphics-text { margin: 8px 0 4px; white-space: pre-wrap; }
+    .alt { color: #818894; text-align: center; font-size: 13px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 18px; color: #69717d; font-size: 14px;
+             padding-top: 14px; margin-top: 14px; border-top: 1px solid #ececf0; }
+    .stat strong { color: #343a40; font-weight: 600; }
+    .url { color: #5978a7; font-size: 12px; overflow-wrap: anywhere; margin-top: 12px; }
+    .repost { margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #f7f8fa;
+              border: 1px solid #ececf0; }
+    .emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+    .emoji-image { display: inline-block; width: 1.1em; height: 1.1em; object-fit: contain; vertical-align: -0.18em; }
+  </style>
+</head>
+<body>
+<main class="card">
+  <header class="header">
+    {% if author and author.avatar_uri %}<img class="avatar" src="{{ author.avatar_uri }}" alt="">{% else %}<span class="avatar"></span>{% endif %}
+    <div>
+      {% if author %}<div class="author-name">{{ author.name|emoji }}</div>{% endif %}
+      <div class="platform">{{ platform.display_name|emoji }}{% if card.datetime %} · <span class="time">{{ card.datetime }}</span>{% endif %}</div>
+    </div>
+  </header>
+
+  {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
+  {% if card.text %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
+
+  {% set visual = contents|selectattr('uri')|list %}
+  {% if visual %}
+  <section class="media-grid{% if visual|length == 1 %} single{% endif %}">
+    {% for item in visual %}
+      {% if item.kind == 'graphics' and item.text %}<div class="graphics-text">{{ item.text|emoji }}</div>{% endif %}
+      <img class="media" src="{{ item.uri }}" alt="{{ item.alt or '' }}">
+      {% if item.alt %}<div class="alt">{{ item.alt|emoji }}</div>{% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if card.extra_info %}<div class="extra">{{ card.extra_info|emoji }}</div>{% endif %}
+  {% if card.stat_items %}
+  <div class="stats">
+    {% for item in card.stat_items %}<span class="stat">{{ item.icon }} {{ item.label }} <strong>{{ item.value|format_count }}</strong></span>{% endfor %}
+  </div>
+  {% endif %}
+  {% if card.url %}<div class="url">{{ card.url }}</div>{% endif %}
+
+  {% if card.repost %}
+  <section class="repost">
+    <div class="platform">转发内容 · {{ card.repost.platform.display_name|emoji }}</div>
+    {% if card.repost.title %}<strong>{{ card.repost.title|emoji }}</strong>{% endif %}
+    {% if card.repost.text %}<div class="text">{{ card.repost.text|emoji }}</div>{% endif %}
+    {% for item in card.repost.contents if item.uri %}<img class="media" src="{{ item.uri }}" alt="{{ item.alt or '' }}">{% endfor %}
+  </section>
+  {% endif %}
+</main>
+</body>
+</html>

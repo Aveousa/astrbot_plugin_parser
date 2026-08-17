@@ -3,6 +3,7 @@
 from abc import ABC
 from asyncio import Task, TimeoutError, sleep
 from collections.abc import Callable, Coroutine
+from collections.abc import Mapping
 from pathlib import Path
 from re import Match, Pattern, compile
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
@@ -16,6 +17,7 @@ from ..data import (
     AudioContent,
     Author,
     DynamicContent,
+    EngagementStats,
     FileContent,
     GraphicsContent,
     ImageContent,
@@ -170,7 +172,37 @@ class BaseParser:
     @classmethod
     def result(cls, **kwargs: Unpack[ParseResultKwargs]) -> ParseResult:
         """构建解析结果"""
+        # 允许各平台解析器使用更贴近 API 的短字段名，同时把结果对象
+        # 的公共字段固定为 like/comment/favorite/share_count。
+        aliases = {
+            "likes": "like_count",
+            "comments": "comment_count",
+            "favorites": "favorite_count",
+            "shares": "share_count",
+            "like": "like_count",
+            "comment": "comment_count",
+            "favorite": "favorite_count",
+            "share": "share_count",
+        }
+        for source, target in aliases.items():
+            if source in kwargs:
+                if target not in kwargs:
+                    kwargs[target] = kwargs[source]  # type: ignore[literal-required]
+                # Do not leave an alias in **kwargs (especially when callers
+                # provide both an alias and the canonical field).
+                kwargs.pop(source, None)  # type: ignore[arg-type]
         return ParseResult(platform=cls.platform, **kwargs)
+
+    @staticmethod
+    def engagement_from_mapping(value: object) -> EngagementStats:
+        """从平台 API 的任意映射中提取互动统计。
+
+        解析器只需将对应的 ``stat``/``statistics`` 节点传入即可；未知或
+        缺失字段会保留为 ``None``，不会影响原有解析流程。
+        """
+        if not isinstance(value, Mapping):
+            return EngagementStats()
+        return EngagementStats.from_mapping(value)
 
     async def get_redirect_url(
         self,

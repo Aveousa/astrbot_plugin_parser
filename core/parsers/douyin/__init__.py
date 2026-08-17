@@ -268,12 +268,25 @@ class DouyinParser(BaseParser):
         author = self.create_author(
             video_data.author.nickname, video_data.avatar_url, headers=self.ios_headers
         )
+        raw_stats = video_data.statistics
+        engagement = self.engagement_from_mapping(
+            {
+                "like": getattr(raw_stats, "digg_count", None),
+                "comment": getattr(raw_stats, "comment_count", None),
+                "favorite": getattr(raw_stats, "collect_count", None),
+                "share": getattr(raw_stats, "share_count", None),
+            }
+        )
 
         return self.result(
             title=video_data.desc,
             author=author,
             contents=contents,
             timestamp=video_data.create_time,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )
 
     @staticmethod
@@ -383,10 +396,23 @@ class DouyinParser(BaseParser):
         author = self.create_author(
             slides_data.name, slides_data.avatar_url, headers=self.android_headers
         )
+        raw_stats = slides_data.statistics
+        engagement = self.engagement_from_mapping(
+            {
+                "like": getattr(raw_stats, "digg_count", None),
+                "comment": getattr(raw_stats, "comment_count", None),
+                "favorite": getattr(raw_stats, "collect_count", None),
+                "share": getattr(raw_stats, "share_count", None),
+            }
+        )
 
         return self.result(
             title=slides_data.desc,
             author=author,
             contents=contents,
             timestamp=slides_data.create_time,
+            like_count=engagement.likes,
+            comment_count=engagement.comments,
+            favorite_count=engagement.favorites,
+            share_count=engagement.shares,
         )

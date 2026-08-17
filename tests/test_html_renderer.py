@@ -1,0 +1,305 @@
+from __future__ import annotations
+
+import asyncio
+import importlib
+import sys
+import tempfile
+import types
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from core.data import ParseResult, Platform
+
+
+@pytest.fixture
+def renderer_module(monkeypatch: pytest.MonkeyPatch):
+    """Provide the smallest AstrBot import surface needed by ``core.render``."""
+    astrbot = types.ModuleType("astrbot")
+    astrbot.__path__ = []
+    api = types.ModuleType("astrbot.api")
+    api.logger = SimpleNamespace(
+        debug=lambda *a, **k: None,
+        info=lambda *a, **k: None,
+        warning=lambda *a, **k: None,
+        error=lambda *a, **k: None,
+        exception=lambda *a, **k: None,
+    )
+    core = types.ModuleType("astrbot.core")
+    core.__path__ = []
+    config_pkg = types.ModuleType("astrbot.core.config")
+    config_pkg.__path__ = []
+    config_mod = types.ModuleType("astrbot.core.config.astrbot_config")
+    config_mod.AstrBotConfig = dict
+    star = types.ModuleType("astrbot.core.star")
+    star.__path__ = []
+    context_mod = types.ModuleType("astrbot.core.star.context")
+    context_mod.Context = object
+    utils = types.ModuleType("astrbot.core.utils")
+    utils.__path__ = []
+    path_mod = types.ModuleType("astrbot.core.utils.astrbot_path")
+    path_mod.get_astrbot_plugin_data_path = lambda: tempfile.gettempdir()
+    path_mod.get_astrbot_plugin_path = lambda: tempfile.gettempdir()
+
+    modules = {
+        "astrbot": astrbot,
+        "astrbot.api": api,
+        "astrbot.core": core,
+        "astrbot.core.config": config_pkg,
+        "astrbot.core.config.astrbot_config": config_mod,
+        "astrbot.core.star": star,
+        "astrbot.core.star.context": context_mod,
+        "astrbot.core.utils": utils,
+        "astrbot.core.utils.astrbot_path": path_mod,
+    }
+    for name, module in modules.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.delitem(sys.modules, "core.render", raising=False)
+    return importlib.import_module("core.render")
+
+
+class _Config:
+    card_enabled = True
+    render_card_enabled = True
+    card_template = "custom"
+    card_custom_template = "custom"
+    emoji_style = "APPLE"
+
+    def __init__(self, root: Path):
+        self.cache_dir = root / "cache"
+        self.template_dir = root / "templates"
+        self.plugin_dir = root / "plugin"
+        self.cache_dir.mkdir()
+        self.template_dir.mkdir()
+        self.plugin_dir.mkdir()
+
+
+class _FakePage:
+    def __init__(self):
+        self.goto_calls: list[tuple[str, dict]] = []
+        self.wait_calls: list[tuple[str, dict]] = []
+        self.screenshot_calls: list[dict] = []
+        self.closed = False
+
+    async def goto(self, url: str, **kwargs):
+        self.goto_calls.append((url, kwargs))
+
+    async def wait_for_function(self, expression: str, **kwargs):
+        self.wait_calls.append((expression, kwargs))
+
+    async def screenshot(self, **kwargs):
+        self.screenshot_calls.append(kwargs)
+        Path(kwargs["path"]).write_bytes(b"png")
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeContext:
+    def __init__(self):
+        self.page = _FakePage()
+        self.closed = False
+
+    async def new_page(self):
+        return self.page
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeBrowser:
+    def __init__(self):
+        self.context = _FakeContext()
+        self.new_context_calls: list[dict] = []
+        self.closed = False
+
+    def is_connected(self):
+        return not self.closed
+
+    async def new_context(self, **kwargs):
+        self.new_context_calls.append(kwargs)
+        return self.context
+
+    async def close(self):
+        self.closed = True
+
+
+class _FakeChromium:
+    def __init__(self, browser: _FakeBrowser):
+        self.browser = browser
+        self.launch_calls: list[dict] = []
+
+    async def launch(self, **kwargs):
+        self.launch_calls.append(kwargs)
+        return self.browser
+
+
+class _FakePlaywright:
+    def __init__(self):
+        self.browser = _FakeBrowser()
+        self.chromium = _FakeChromium(self.browser)
+        self.stopped = False
+
+    async def stop(self):
+        self.stopped = True
+
+
+class _FakePlaywrightManager:
+    def __init__(self, playwright: _FakePlaywright):
+        self.playwright = playwright
+        self.start_calls = 0
+
+    def __call__(self):
+        return self
+
+    async def start(self):
+        self.start_calls += 1
+        return self.playwright
+
+
+def test_total_card_switch_blocks_renderer(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    config.card_enabled = False
+    renderer = renderer_module.Renderer(config)
+    result = ParseResult(platform=Platform("xhs", "\u5c0f\u7ea2\u4e66"), title="skip")
+
+    assert asyncio.run(renderer.render_card(result)) is None
+
+
+def test_builtin_template_only_renders_available_statistics(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    config.card_template = "default"
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+
+    empty = ParseResult(platform=Platform("pixiv", "Pixiv"), title="empty")
+    empty_html = renderer.render_html(empty, asyncio.run(renderer._result_context(empty)))
+    assert 'class="stats"' not in empty_html
+
+    counted = ParseResult(
+        platform=Platform("pixiv", "Pixiv"), title="counted", favorite_count=0
+    )
+    counted_html = renderer.render_html(
+        counted, asyncio.run(renderer._result_context(counted))
+    )
+    assert 'class="stats"' in counted_html
+    assert "\u6536\u85cf" in counted_html
+
+
+def test_playwright_failure_skips_card_without_fallback(
+    renderer_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+
+    async def fails(html: str, target: Path, *, base_url: str | None = None) -> bool:
+        return False
+
+    monkeypatch.setattr(renderer, "_render_playwright_png", fails)
+    result = ParseResult(platform=Platform("xhs", "\u5c0f\u7ea2\u4e66"), title="failure")
+
+    assert asyncio.run(renderer.render_card(result)) is None
+    assert result.render_image is None
+    assert not list(config.cache_dir.glob("card_*.png"))
+
+
+def test_custom_jinja_template_uses_playwright_png(
+    renderer_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config = _Config(tmp_path)
+    (tmp_path / "templates" / "custom.html").write_text(
+        "<html><body><h1>{{ card.title|emoji }}</h1>"
+        "<p>{{ card.stats.likes|format_count }}</p></body></html>",
+        encoding="utf-8",
+    )
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    assert renderer.template_dirs[0] == config.template_dir
+    assert renderer._template_base_dir() == config.template_dir
+    assert renderer_module.Renderer._TEMPLATES_DIR in renderer.template_dirs
+    assert {"default", "compact", "custom"} <= set(renderer.available_templates())
+    result = ParseResult(
+        platform=Platform("xhs", "\u5c0f\u7ea2\u4e66"),
+        title="Apple \U0001f44b\U0001f3fd 1\ufe0f\u20e3 \u260e\ufe0f",
+        like_count=12_000,
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    html = renderer.render_html(result, context)
+    assert "1.2\u4e07" in html
+    assert "emoji--apple" in html
+
+    calls: list[tuple[str, Path, str | None]] = []
+
+    async def screenshot(html: str, target: Path, *, base_url: str | None = None) -> bool:
+        calls.append((html, target, base_url))
+        target.write_bytes(b"\x89PNG\r\n\x1a\n")
+        return True
+
+    monkeypatch.setattr(renderer, "_render_playwright_png", screenshot)
+    output = asyncio.run(renderer.render_card(result))
+    assert output is not None and output.read_bytes().startswith(b"\x89PNG")
+    assert calls and calls[0][2] == str(config.template_dir)
+
+
+def test_playwright_screenshot_uses_headless_shell_and_removes_temp_html(
+    renderer_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    fake = _FakePlaywright()
+    manager = _FakePlaywrightManager(fake)
+    monkeypatch.setattr(renderer_module, "_PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(renderer_module, "async_playwright", manager)
+
+    target = config.cache_dir / "card.png"
+    assert asyncio.run(
+        renderer._render_playwright_png(
+            "<html><head></head><body>card</body></html>",
+            target,
+            base_url=str(config.template_dir),
+        )
+    )
+    assert target.read_bytes() == b"png"
+    assert not list(config.cache_dir.glob("*.html"))
+    assert fake.chromium.launch_calls[0]["headless"] is True
+    assert fake.browser.new_context_calls[0]["viewport"]["width"] == 760
+    assert fake.browser.context.page.goto_calls[0][0].startswith("file:///")
+    assert fake.browser.context.page.screenshot_calls[0]["full_page"] is True
+    assert fake.browser.context.page.closed is True
+
+    # The browser is retained until plugin shutdown, so subsequent cards avoid
+    # another shell launch.
+    assert asyncio.run(renderer.start())
+    assert len(fake.chromium.launch_calls) == 1
+    asyncio.run(renderer.close())
+    assert fake.browser.context.closed is True
+    assert fake.browser.closed is True
+    assert fake.stopped is True
+
+
+def test_base_url_injection_preserves_existing_base(renderer_module, tmp_path: Path):
+    base = str(tmp_path / "assets")
+    injected = renderer_module.Renderer._inject_base_url(
+        "<html><head><title>x</title></head><body></body></html>", base
+    )
+    assert "<base href=\"file:///" in injected
+    assert "assets/\"" in injected
+
+    existing = "<html><head><base href=\"https://example.test/\"></head></html>"
+    assert renderer_module.Renderer._inject_base_url(existing, base) == existing
+
+
+def test_apple_emoji_sequences_are_kept_together(renderer_module):
+    tokens = renderer_module.Renderer._emoji_tokens(
+        "\U0001f44b\U0001f3fd 1\ufe0f\u20e3 \u260e\ufe0f \U0001f1e8\U0001f1f3 \U0001f468\u200d\U0001f469\u200d\U0001f467\u200d\U0001f466"
+    )
+    assert {
+        "\U0001f44b\U0001f3fd",
+        "1\ufe0f\u20e3",
+        "\u260e\ufe0f",
+        "\U0001f1e8\U0001f1f3",
+        "\U0001f468\u200d\U0001f469\u200d\U0001f467\u200d\U0001f466",
+    } <= tokens
