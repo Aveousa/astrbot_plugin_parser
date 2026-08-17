@@ -454,8 +454,8 @@ def test_apple_template_uses_first_visual_as_the_only_cover(
     assert video_cover.resolve().as_uri() in video_html
     assert video_file.resolve().as_uri() not in video_html
     assert 'data-cover-kind="video"' in video_html
-    assert "1:20" in video_html
     assert 'class="cover__play"' not in video_html
+    assert 'class="cover__duration"' not in video_html
     assert 'class="video-description"' in video_html
     assert video_html.index('class="cover cover--video"') < video_html.index(
         'class="video-description"'
@@ -463,6 +463,8 @@ def test_apple_template_uses_first_visual_as_the_only_cover(
     assert "视频简介" + "甲" * 116 in video_html
     assert "此段超出上限，不能展示" not in video_html
     assert "视频简介" not in video_html[: video_html.index('class="cover cover--video"')]
+    assert "aspect-ratio: 1.72 / 1" not in video_html
+    assert "height: auto;" in video_html
 
     source_video = tmp_path / "motion.mp4"
     dynamic_cover = tmp_path / "motion.gif"

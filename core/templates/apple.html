@@ -127,7 +127,6 @@
     .cover {
       position: relative;
       width: calc(100% - 40px);
-      aspect-ratio: 1.72 / 1;
       margin: 18px 20px 0;
       overflow: hidden;
       background: #f2f2f7;
@@ -139,13 +138,10 @@
     .cover__image {
       display: block;
       width: 100%;
-      height: 100%;
-      object-fit: cover;
-      object-position: center;
+      height: auto;
     }
 
     .cover__badge,
-    .cover__duration,
     .cover__motion {
       position: absolute;
       display: inline-flex;
@@ -173,18 +169,6 @@
     }
 
     .cover__badge svg { width: 15px; height: 15px; }
-
-    .cover__duration {
-      right: 12px;
-      bottom: 12px;
-      min-height: 28px;
-      padding: 0 9px;
-      border-radius: 14px;
-      font-size: 13px;
-      font-weight: 650;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.01em;
-    }
 
     .cover__motion {
       right: 12px;
@@ -322,14 +306,12 @@
 
     @media (prefers-reduced-transparency: reduce) {
       .cover__badge,
-      .cover__duration,
       .cover__motion {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
       }
 
       .cover__badge,
-      .cover__duration,
       .cover__motion { background: rgba(29, 29, 31, 0.94); }
     }
 
@@ -392,13 +374,7 @@
         <span>{{ visual|length }}</span>
       </span>
     {% endif %}
-    {% if cover.kind == 'video' %}
-      {% if cover.duration and cover.duration > 0 %}
-        {% set duration_minutes = (cover.duration|int) // 60 %}
-        {% set duration_seconds = (cover.duration|int) % 60 %}
-        <span class="cover__duration">{{ "%d:%02d"|format(duration_minutes, duration_seconds) }}</span>
-      {% endif %}
-    {% elif cover.kind == 'dynamic' %}
+    {% if cover.kind == 'dynamic' %}
       <span class="cover__motion" aria-label="动态图片">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h8.5"></path><path d="m9.8 5.5 4.5 4.5-4.5 4.5"></path><path d="M5.8 5.5H4a2 2 0 0 0-2 2"></path><path d="M5.8 14.5H4a2 2 0 0 1-2-2"></path></svg>
         <span>动态</span>
