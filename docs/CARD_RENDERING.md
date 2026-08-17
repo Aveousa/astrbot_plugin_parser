@@ -44,7 +44,7 @@
 
 模板查找优先级如下：
 
-1. `<AstrBot 插件数据目录>/astrbot_plugin_parser/templates/`
+1. `<AstrBot 插件数据目录>/astrbot_plugin_parser_test/templates/`
 2. `<插件安装目录>/templates/`
 3. `core/templates/`（内置 `default.html`、`compact.html`）
 

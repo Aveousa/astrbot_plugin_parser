@@ -1,6 +1,9 @@
-# astrbot_plugin_parser
+# astrbot_plugin_parser_test
 
 AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv，解析结果会统一映射为 `ParseResult`，再按配置发送媒体和可选信息卡片。
+
+测试版的插件安装标识为 `astrbot_plugin_parser_test`，可与原版
+`astrbot_plugin_parser` 同时安装。两者的配置、Cookie、缓存和自定义卡片模板目录相互隔离。
 
 ## 支持范围
 
@@ -24,7 +27,7 @@ AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv
 - `自定义卡片模板文件名`：选择自定义模板后填写文件名（不含 `.html`）。
 - `表情样式`：默认 `Apple`。iOS Unicode 组合表情、肤色和 ZWJ 表情会以完整序列传递给模板，并优先使用 Apple Emoji 字体回退链。
 
-卡片模板采用 Jinja2，布局由 Playwright 驱动的 Chrome Headless Shell 渲染。可将自定义 `*.html` 放到 AstrBot 插件数据目录的 `astrbot_plugin_parser/templates/` 中，在插件页选择“自定义模板”并填写文件名。用户模板会覆盖同名内置模板。
+卡片模板采用 Jinja2，布局由 Playwright 驱动的 Chrome Headless Shell 渲染。可将自定义 `*.html` 放到 AstrBot 插件数据目录的 `astrbot_plugin_parser_test/templates/` 中，在插件页选择“自定义模板”并填写文件名。用户模板会覆盖同名内置模板。
 
 完整的数据上下文、模板扩展方式和回归项目见 [卡片渲染与回归说明](docs/CARD_RENDERING.md)。
 
@@ -42,6 +45,11 @@ AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv
 ## 安装与依赖
 
 通过 AstrBot 插件市场安装即可。独立开发环境需安装 `requirements.txt`，其中卡片渲染新增：
+
+> 使用 AstrBot 的 Git 安装方式时，仓库 URL 的最后一段也必须是
+> `astrbot_plugin_parser_test`（例如将仓库重命名为该名称后再安装）。部分 AstrBot
+> 版本会在读取 `metadata.yaml` 之前按 URL 名称创建插件目录；如果继续使用
+> `.../astrbot_plugin_parser.git`，即使元数据已改名，仍可能因原版目录已存在而拒绝安装。
 
 ```bash
 python -m pip install -r requirements.txt

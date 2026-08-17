@@ -222,7 +222,9 @@ class PluginConfig(ConfigNode):
 
     parsers_template: list[dict[str, Any]]
 
-    _plugin_name = "astrbot_plugin_parser"
+    # 必须与 metadata.yaml 中的 name 保持一致。这样测试版会使用独立的
+    # 安装目录、配置、Cookie 和卡片模板目录，可与原版同时运行。
+    _plugin_name = "astrbot_plugin_parser_test"
     _supported_parser_names = ("bilibili", "douyin", "xhs", "pixiv")
 
     def __init__(self, config: AstrBotConfig, context: Context):

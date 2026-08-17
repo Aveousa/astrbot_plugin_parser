@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import tomllib
 import types
 from types import SimpleNamespace
 
@@ -70,6 +71,19 @@ def test_configuration_exposes_card_switches_and_template_selector():
     assert schema["card_template"]["options"] == ["default", "compact", "custom"]
     assert schema["card_custom_template"]["default"] == ""
     assert "APPLE" in schema["emoji_style"]["options"]
+
+
+def test_test_plugin_identity_is_isolated_from_original_plugin(config_module):
+    metadata_name = next(
+        line.split(":", 1)[1].strip()
+        for line in (ROOT / "metadata.yaml").read_text(encoding="utf-8").splitlines()
+        if line.startswith("name:")
+    )
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert metadata_name == "astrbot_plugin_parser_test"
+    assert project["project"]["name"] == "astrbot_plugin_parser_test"
+    assert config_module.PluginConfig._plugin_name == "astrbot_plugin_parser_test"
 
 
 def test_only_four_parser_templates_are_exposed():
