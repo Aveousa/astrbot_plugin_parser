@@ -166,6 +166,46 @@ def test_total_card_switch_blocks_renderer(renderer_module, tmp_path: Path):
     assert asyncio.run(renderer.render_card(result)) is None
 
 
+def test_video_without_cover_uses_error_placeholder(renderer_module, tmp_path: Path, monkeypatch):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    error_cover = tmp_path / "err.png"
+    error_cover.write_bytes(b"error")
+    monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+    result = ParseResult(
+        platform=Platform("bilibili", "Bilibili"),
+        title="无封面视频",
+        contents=[VideoContent(video, cover=None)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
+
+
+def test_image_gallery_ignores_failed_items_and_keeps_completed_image(
+    renderer_module, tmp_path: Path
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    completed = tmp_path / "completed.png"
+    completed.write_bytes(b"image")
+    result = ParseResult(
+        platform=Platform("xhs", "小红书"),
+        title="图集",
+        contents=[ImageContent(tmp_path / "missing.png"), ImageContent(completed)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    contents = context["card"]["contents"]
+    assert contents[0]["uri"] is None
+    assert contents[1]["uri"] == completed.resolve().as_uri()
+
+
 def test_builtin_template_only_renders_available_statistics(renderer_module, tmp_path: Path):
     config = _Config(tmp_path)
     config.card_template = "default"
@@ -184,6 +224,38 @@ def test_builtin_template_only_renders_available_statistics(renderer_module, tmp
     )
     assert 'class="stats"' in counted_html
     assert "\u6536\u85cf" in counted_html
+
+
+def test_default_template_places_video_description_below_preview_and_truncates(
+    renderer_module, tmp_path: Path
+):
+    config = _Config(tmp_path)
+    config.card_template = "default"
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+
+    video_file = tmp_path / "video.mp4"
+    video_cover = tmp_path / "video-cover.jpg"
+    video_file.write_bytes(b"video")
+    video_cover.write_bytes(b"cover")
+    description = "视频简介" + "甲" * 116 + "此段超出上限，不能展示"
+    result = ParseResult(
+        platform=Platform("bilibili", "Bilibili"),
+        title="视频",
+        text=description,
+        contents=[VideoContent(video_file, cover=video_cover, duration=80)],
+    )
+
+    html = renderer.render_html(result, asyncio.run(renderer._result_context(result)))
+
+    assert 'class="media-grid single"' in html
+    assert 'class="video-description"' in html
+    assert html.index('class="media-grid single"') < html.index(
+        'class="video-description"'
+    )
+    assert description[:120] in html
+    assert "此段超出上限，不能展示" not in html
+    assert description[:120] not in html[: html.index('class="media-grid single"')]
 
 
 def test_playwright_failure_skips_card_without_fallback(
@@ -347,6 +419,7 @@ def test_apple_template_uses_first_visual_as_the_only_cover(
     video = ParseResult(
         platform=Platform("bilibili", "Bilibili"),
         title="视频",
+        text="视频简介" + "甲" * 116 + "此段超出上限，不能展示",
         contents=[VideoContent(video_file, cover=video_cover, duration=80)],
     )
     video_html = renderer.render_html(video, asyncio.run(renderer._result_context(video)))
@@ -355,6 +428,14 @@ def test_apple_template_uses_first_visual_as_the_only_cover(
     assert video_file.resolve().as_uri() not in video_html
     assert 'data-cover-kind="video"' in video_html
     assert "1:20" in video_html
+    assert 'class="cover__play"' not in video_html
+    assert 'class="video-description"' in video_html
+    assert video_html.index('class="cover cover--video"') < video_html.index(
+        'class="video-description"'
+    )
+    assert "视频简介" + "甲" * 116 in video_html
+    assert "此段超出上限，不能展示" not in video_html
+    assert "视频简介" not in video_html[: video_html.index('class="cover cover--video"')]
 
     source_video = tmp_path / "motion.mp4"
     dynamic_cover = tmp_path / "motion.gif"

@@ -25,6 +25,11 @@
     .media-grid.single .media { max-height: 680px; object-fit: contain; }
     .graphics-text { margin: 8px 0 4px; white-space: pre-wrap; }
     .alt { color: #818894; text-align: center; font-size: 13px; }
+    .video-description { height: 90px; margin: 12px 0 14px; padding: 12px 14px; overflow: hidden;
+                         color: #4f5660; background: #f7f8fa; border: 1px solid #ececf0; border-radius: 8px; }
+    .video-description__text { display: -webkit-box; overflow: hidden; font-size: 15px; line-height: 1.55;
+                               overflow-wrap: anywhere; text-overflow: ellipsis; -webkit-box-orient: vertical;
+                               -webkit-line-clamp: 3; }
     .stats { display: flex; flex-wrap: wrap; gap: 18px; color: #69717d; font-size: 14px;
              padding-top: 14px; margin-top: 14px; border-top: 1px solid #ececf0; }
     .stat strong { color: #343a40; font-weight: 600; }
@@ -45,10 +50,14 @@
     </div>
   </header>
 
-  {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
-  {% if card.text %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
-
   {% set visual = contents|selectattr('uri')|list %}
+  {% set has_video = visual|selectattr('kind', 'equalto', 'video')|list|length > 0 %}
+  {% set video_description_limit = 120 %}
+  {% set video_description = card.text[:video_description_limit] if has_video and card.text else '' %}
+  {% set video_description_truncated = has_video and card.text and card.text|length > video_description_limit %}
+  {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
+  {% if card.text and not has_video %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
+
   {% if visual %}
   <section class="media-grid{% if visual|length == 1 %} single{% endif %}">
     {% for item in visual %}
@@ -56,6 +65,11 @@
       <img class="media" src="{{ item.uri }}" alt="{{ item.alt or '' }}">
       {% if item.alt %}<div class="alt">{{ item.alt|emoji }}</div>{% endif %}
     {% endfor %}
+  </section>
+  {% endif %}
+  {% if video_description %}
+  <section class="video-description" aria-label="视频简介">
+    <div class="video-description__text">{{ video_description|emoji }}{% if video_description_truncated %}…{% endif %}</div>
   </section>
   {% endif %}
 

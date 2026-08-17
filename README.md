@@ -5,6 +5,7 @@ AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv
 测试版的插件安装标识为 `astrbot_plugin_parser_test`，可与原版
 `astrbot_plugin_parser` 同时安装。两者的配置、Cookie、缓存和自定义卡片模板目录相互隔离。
 
+
 ## 支持范围
 
 | 平台 | 入口 | 主要内容 |
@@ -14,7 +15,7 @@ AstrBot 链接解析插件。当前支持 Bilibili、抖音、小红书和 Pixiv
 | 小红书 | 分享短链、`explore` / `discovery` 链接 | 视频、图文 |
 | Pixiv | 作品链接、`pid`、小说链接 | 插画、漫画、动图、小说 |
 
-除以上四个平台外的解析器已移除。
+
 
 ## 卡片配置
 

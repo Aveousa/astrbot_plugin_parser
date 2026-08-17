@@ -174,26 +174,6 @@
 
     .cover__badge svg { width: 15px; height: 15px; }
 
-    .cover__play {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      display: grid;
-      width: 58px;
-      height: 58px;
-      place-items: center;
-      color: #1d1d1f;
-      background: rgba(255, 255, 255, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.48);
-      border-radius: 50%;
-      box-shadow: 0 5px 18px rgba(0, 0, 0, 0.20);
-      transform: translate(-50%, -50%);
-      backdrop-filter: blur(16px) saturate(165%);
-      -webkit-backdrop-filter: blur(16px) saturate(165%);
-    }
-
-    .cover__play svg { width: 23px; height: 23px; margin-left: 3px; }
-
     .cover__duration {
       right: 12px;
       bottom: 12px;
@@ -226,6 +206,28 @@
       font-size: 12px;
       line-height: 1.45;
       text-align: center;
+    }
+
+    .video-description {
+      height: 90px;
+      margin: 12px 20px 0;
+      padding: 12px 14px;
+      overflow: hidden;
+      background: #f5f5f7;
+      border: 1px solid #e5e5ea;
+      border-radius: 17px;
+    }
+
+    .video-description__text {
+      display: -webkit-box;
+      overflow: hidden;
+      color: #515154;
+      font-size: 14px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      text-overflow: ellipsis;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
     }
 
     .extra {
@@ -321,8 +323,7 @@
     @media (prefers-reduced-transparency: reduce) {
       .cover__badge,
       .cover__duration,
-      .cover__motion,
-      .cover__play {
+      .cover__motion {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
       }
@@ -330,7 +331,6 @@
       .cover__badge,
       .cover__duration,
       .cover__motion { background: rgba(29, 29, 31, 0.94); }
-      .cover__play { background: #fff; }
     }
 
     @media (prefers-contrast: more) {
@@ -347,6 +347,10 @@
 <body>
 {% set visual = contents|selectattr('uri')|list %}
 {% set cover = visual[0] if visual else none %}
+{% set is_video_cover = cover and cover.kind == 'video' %}
+{% set video_description_limit = 120 %}
+{% set video_description = card.text[:video_description_limit] if is_video_cover and card.text else '' %}
+{% set video_description_truncated = is_video_cover and card.text and card.text|length > video_description_limit %}
 <main class="card">
   <header class="card-header">
     {% if author and author.avatar_uri %}
@@ -368,10 +372,10 @@
     </div>
   </header>
 
-  {% if card.title or card.text or (cover and cover.kind == 'graphics' and cover.text) %}
+  {% if card.title or (card.text and not is_video_cover) or (cover and cover.kind == 'graphics' and cover.text) %}
   <section class="content">
     {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
-    {% if card.text %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
+    {% if card.text and not is_video_cover %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
     {% if cover and cover.kind == 'graphics' and cover.text %}<div class="visual-note">{{ cover.text|emoji }}</div>{% endif %}
   </section>
   {% endif %}
@@ -389,9 +393,6 @@
       </span>
     {% endif %}
     {% if cover.kind == 'video' %}
-      <span class="cover__play" aria-label="视频">
-        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.9c0-1.02 1.12-1.64 1.99-1.1l8.18 5.1a2.48 2.48 0 0 1 0 4.2l-8.18 5.1a1.3 1.3 0 0 1-1.99-1.1V5.9Z"></path></svg>
-      </span>
       {% if cover.duration and cover.duration > 0 %}
         {% set duration_minutes = (cover.duration|int) // 60 %}
         {% set duration_seconds = (cover.duration|int) % 60 %}
@@ -404,6 +405,11 @@
       </span>
     {% endif %}
   </figure>
+  {% if video_description %}
+  <section class="video-description" aria-label="视频简介">
+    <div class="video-description__text">{{ video_description|emoji }}{% if video_description_truncated %}…{% endif %}</div>
+  </section>
+  {% endif %}
   {% if cover.alt %}<div class="cover-caption">{{ cover.alt|emoji }}</div>{% endif %}
   {% endif %}
 

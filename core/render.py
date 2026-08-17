@@ -89,6 +89,8 @@ class Renderer:
 
     BUILTIN_TEMPLATE_NAMES: ClassVar[tuple[str, ...]] = ("default", "compact")
     _TEMPLATES_DIR: ClassVar[Path] = Path(__file__).with_name("templates")
+    _RESOURCES_DIR: ClassVar[Path] = Path(__file__).with_name("resources")
+    _VIDEO_ERROR_COVER_NAMES: ClassVar[tuple[str, ...]] = ("err.png", "error.png")
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
     # ``full_page=True`` captures the whole document. A short viewport avoids
@@ -441,18 +443,26 @@ class Renderer:
 
     @staticmethod
     async def _media_path(content: MediaContent) -> Path | None:
-        """卡片只取可直接展示的封面或图片路径。"""
+        """返回卡片可直接展示的本地图片，并为无封面视频提供占位图。"""
         try:
             if isinstance(content, VideoContent):
-                return await content.get_cover_path()
+                cover = await content.get_cover_path()
+                if cover and cover.is_file():
+                    return cover
+                for filename in Renderer._VIDEO_ERROR_COVER_NAMES:
+                    fallback = Renderer._RESOURCES_DIR / filename
+                    if fallback.is_file():
+                        return fallback
+                return None
             if isinstance(content, (ImageContent, GraphicsContent)):
-                return await content.get_path()
+                path = await content.get_path()
+                return path if path.is_file() else None
             if isinstance(content, DynamicContent):
                 # 动态内容若已有 GIF/图片副本，优先用它作为静态卡片封面。
-                if content.gif_path and content.gif_path.exists():
+                if content.gif_path and content.gif_path.is_file():
                     return content.gif_path
                 path = await content.get_path()
-                if path.suffix.lower() in {
+                if path.is_file() and path.suffix.lower() in {
                     ".apng",
                     ".avif",
                     ".gif",

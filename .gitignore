@@ -6,3 +6,4 @@ core/test/
 /.idea/
 /data/
 /.venv/
+/astrbot_plugin_parser_test.zip
