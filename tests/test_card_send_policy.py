@@ -133,8 +133,7 @@ class _Renderer:
 def _card_config(**overrides):
     config = {
         "forward_threshold": 2,
-        "render_card_enabled": True,
-        "send_card_enabled": True,
+        "card_enabled": True,
         "show_download_fail_tip": True,
         "audio_to_file": True,
     }
@@ -142,39 +141,35 @@ def _card_config(**overrides):
     return SimpleNamespace(**config)
 
 
-def test_global_card_switches_govern_result_card(sender_module):
+def test_single_card_switch_governs_render_and_send(sender_module):
     renderer = _Renderer()
     config = SimpleNamespace(
         forward_threshold=10,
-        render_card_enabled=False,
-        send_card_enabled=True,
+        card_enabled=False,
         show_download_fail_tip=True,
         audio_to_file=True,
     )
     sender = sender_module.MessageSender(config, renderer)
     event = _Event()
 
-    assert not asyncio.run(sender._send_result_card(event, _result()))
+    result = _result()
+    asyncio.run(sender.send_parse_result(event, result))
     assert not renderer.calls
+    assert len(event.sent) == 1
+    assert event.sent[0][0].path == "video.mp4"
 
-    config.render_card_enabled = True
-    config.send_card_enabled = False
-    assert not asyncio.run(sender._send_result_card(event, _result()))
-    assert not renderer.calls
-
-    config.send_card_enabled = True
-    assert asyncio.run(sender._send_result_card(event, _result()))
+    config.card_enabled = True
+    event = _Event()
+    assert asyncio.run(sender._send_result_card(event, result))
     assert len(renderer.calls) == 1
     assert len(event.sent) == 1
 
 
-def test_legacy_raw_total_switch_is_respected(sender_module):
+def test_disabled_card_switch_skips_direct_render_attempt(sender_module):
     renderer = _Renderer()
     config = SimpleNamespace(
         forward_threshold=2,
         card_enabled=False,
-        card_render_enabled=True,
-        card_send_enabled=True,
         show_download_fail_tip=True,
         audio_to_file=True,
     )

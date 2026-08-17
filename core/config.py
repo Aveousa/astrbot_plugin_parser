@@ -202,11 +202,8 @@ class PluginConfig(ConfigNode):
     single_heavy_render_card: bool
     forward_threshold: int
 
-    # 卡片统一策略。card_enabled 是总开关，两个细分开关分别控制渲染
-    # 和发送，保留细分项便于后续按渠道扩展。
+    # 信息卡片只有一个开关：开启即渲染并发送，关闭即完全跳过卡片链路。
     card_enabled: bool
-    card_render_enabled: bool
-    card_send_enabled: bool
     card_template: str
     card_custom_template: str | None
     emoji_style: str
@@ -228,17 +225,15 @@ class PluginConfig(ConfigNode):
     _supported_parser_names = ("bilibili", "douyin", "xhs", "pixiv")
 
     def __init__(self, config: AstrBotConfig, context: Context):
+        defaults_changed = self._migrate_card_switches(config)
         # 旧版本配置没有卡片字段时安全补默认值，避免 ConfigNode 对缺失
         # 字段返回 None 进而改变旧的发送策略。
         defaults = {
             "card_enabled": True,
-            "card_render_enabled": True,
-            "card_send_enabled": True,
             "card_template": "default",
             "card_custom_template": "",
             "emoji_style": "APPLE",
         }
-        defaults_changed = False
         for key, value in defaults.items():
             if config.get(key) is None:
                 config[key] = value
@@ -293,27 +288,37 @@ class PluginConfig(ConfigNode):
 
         self.parser = ParserConfig(self.parsers_template)
 
-    @property
-    def cards_enabled(self) -> bool:
-        """卡片总开关及两个细分开关均打开时才允许卡片。"""
-        return bool(
-            self._data.get("card_enabled", True)
-            and self._data.get("card_render_enabled", True)
-            and self._data.get("card_send_enabled", True)
+    @staticmethod
+    def _migrate_card_switches(config: MutableMapping[str, Any]) -> bool:
+        """将旧三开关压缩为一个，并保留其历史上的实际生效结果。"""
+        legacy_keys = ("card_render_enabled", "card_send_enabled")
+        legacy_values = [
+            bool(config[key])
+            for key in legacy_keys
+            if config.get(key) is not None
+        ]
+        configured_value = config.get("card_enabled")
+        effective_value = (
+            bool(configured_value)
+            if configured_value is not None
+            else all(legacy_values) if legacy_values else True
         )
+        if legacy_values:
+            effective_value = effective_value and all(legacy_values)
 
-    # 兼容可能在外部模板/旧配置中使用的命名。
-    @property
-    def render_card_enabled(self) -> bool:
-        return bool(self._data.get("card_enabled", True) and self._data.get("card_render_enabled", True))
+        changed = configured_value is None or bool(configured_value) != effective_value
+        if changed:
+            config["card_enabled"] = effective_value
 
-    @property
-    def send_card_enabled(self) -> bool:
-        return bool(self._data.get("card_enabled", True) and self._data.get("card_send_enabled", True))
+        for key in legacy_keys:
+            if key in config:
+                config.pop(key)
+                changed = True
+        return changed
 
     def available_card_templates(self) -> list[str]:
         """返回内置与用户模板名称，供配置页和运行时校验使用。"""
-        names = {"default", "compact"}
+        names = {"default", "compact", "apple"}
         for directory in (self.template_dir, self.plugin_dir / "templates"):
             if directory.is_dir():
                 names.update(path.stem for path in directory.glob("*.html"))

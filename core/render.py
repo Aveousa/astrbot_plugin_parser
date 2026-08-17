@@ -441,12 +441,27 @@ class Renderer:
 
     @staticmethod
     async def _media_path(content: MediaContent) -> Path | None:
-        """卡片只取视频封面；其他可展示媒体取自身图片路径。"""
+        """卡片只取可直接展示的封面或图片路径。"""
         try:
             if isinstance(content, VideoContent):
                 return await content.get_cover_path()
             if isinstance(content, (ImageContent, GraphicsContent)):
                 return await content.get_path()
+            if isinstance(content, DynamicContent):
+                # 动态内容若已有 GIF/图片副本，优先用它作为静态卡片封面。
+                if content.gif_path and content.gif_path.exists():
+                    return content.gif_path
+                path = await content.get_path()
+                if path.suffix.lower() in {
+                    ".apng",
+                    ".avif",
+                    ".gif",
+                    ".jpeg",
+                    ".jpg",
+                    ".png",
+                    ".webp",
+                }:
+                    return path
         except (DownloadException, OSError, RuntimeError):
             return None
         return None
@@ -651,18 +666,7 @@ class Renderer:
 
     async def render_card(self, result: ParseResult) -> Path | None:
         """将解析实体渲染为缓存 PNG；失败只返回 ``None``，不影响媒体发送。"""
-        render_enabled = getattr(self.cfg, "render_card_enabled", None)
-        if render_enabled is None:
-            render_enabled = bool(
-                getattr(self.cfg, "card_enabled", True)
-                and getattr(self.cfg, "card_render_enabled", True)
-            )
-        else:
-            # 兼容只暴露派生属性之外的旧配置对象：总开关始终优先。
-            render_enabled = bool(
-                render_enabled and getattr(self.cfg, "card_enabled", True)
-            )
-        if not bool(render_enabled):
+        if not bool(getattr(self.cfg, "card_enabled", True)):
             return None
         target: Path | None = None
         try:

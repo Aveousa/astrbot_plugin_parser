@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.data import ParseResult, Platform
+from core.data import DynamicContent, ImageContent, ParseResult, Platform, VideoContent
 
 
 @pytest.fixture
@@ -61,7 +61,6 @@ def renderer_module(monkeypatch: pytest.MonkeyPatch):
 
 class _Config:
     card_enabled = True
-    render_card_enabled = True
     card_template = "custom"
     card_custom_template = "custom"
     emoji_style = "APPLE"
@@ -219,7 +218,7 @@ def test_custom_jinja_template_uses_playwright_png(
     assert renderer.template_dirs[0] == config.template_dir
     assert renderer._template_base_dir() == config.template_dir
     assert renderer_module.Renderer._TEMPLATES_DIR in renderer.template_dirs
-    assert {"default", "compact", "custom"} <= set(renderer.available_templates())
+    assert {"default", "compact", "apple", "custom"} <= set(renderer.available_templates())
     result = ParseResult(
         platform=Platform("xhs", "\u5c0f\u7ea2\u4e66"),
         title="Apple \U0001f44b\U0001f3fd 1\ufe0f\u20e3 \u260e\ufe0f",
@@ -303,3 +302,79 @@ def test_apple_emoji_sequences_are_kept_together(renderer_module):
         "\U0001f1e8\U0001f1f3",
         "\U0001f468\u200d\U0001f469\u200d\U0001f467\u200d\U0001f466",
     } <= tokens
+
+
+def test_apple_template_uses_first_visual_as_the_only_cover(
+    renderer_module, tmp_path: Path
+):
+    config = _Config(tmp_path)
+    config.card_template = "apple"
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    gallery = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="多图集",
+        contents=[ImageContent(first), ImageContent(second)],
+    )
+    gallery_html = renderer.render_html(
+        gallery, asyncio.run(renderer._result_context(gallery))
+    )
+
+    assert first.resolve().as_uri() in gallery_html
+    assert second.resolve().as_uri() not in gallery_html
+    assert 'data-cover-kind="image"' in gallery_html
+    assert 'data-media-count="2"' in gallery_html
+
+    single = ParseResult(
+        platform=Platform("xhs", "小红书"),
+        title="单图",
+        contents=[ImageContent(first)],
+    )
+    single_html = renderer.render_html(single, asyncio.run(renderer._result_context(single)))
+
+    assert first.resolve().as_uri() in single_html
+    assert 'data-media-count="1"' in single_html
+
+    video_file = tmp_path / "video.mp4"
+    video_cover = tmp_path / "video-cover.jpg"
+    video_file.write_bytes(b"video")
+    video_cover.write_bytes(b"cover")
+    video = ParseResult(
+        platform=Platform("bilibili", "Bilibili"),
+        title="视频",
+        contents=[VideoContent(video_file, cover=video_cover, duration=80)],
+    )
+    video_html = renderer.render_html(video, asyncio.run(renderer._result_context(video)))
+
+    assert video_cover.resolve().as_uri() in video_html
+    assert video_file.resolve().as_uri() not in video_html
+    assert 'data-cover-kind="video"' in video_html
+    assert "1:20" in video_html
+
+    source_video = tmp_path / "motion.mp4"
+    dynamic_cover = tmp_path / "motion.gif"
+    second_dynamic_cover = tmp_path / "motion-second.gif"
+    source_video.write_bytes(b"motion")
+    dynamic_cover.write_bytes(b"gif")
+    second_dynamic_cover.write_bytes(b"second gif")
+    dynamic = ParseResult(
+        platform=Platform("pixiv", "Pixiv"),
+        title="动态图片",
+        contents=[
+            DynamicContent(source_video, gif_path=dynamic_cover),
+            DynamicContent(source_video, gif_path=second_dynamic_cover),
+        ],
+    )
+    dynamic_html = renderer.render_html(
+        dynamic, asyncio.run(renderer._result_context(dynamic))
+    )
+
+    assert dynamic_cover.resolve().as_uri() in dynamic_html
+    assert second_dynamic_cover.resolve().as_uri() not in dynamic_html
+    assert 'data-cover-kind="dynamic"' in dynamic_html
+    assert 'data-media-count="2"' in dynamic_html

@@ -62,16 +62,95 @@ def config_module(monkeypatch: pytest.MonkeyPatch):
     return importlib.import_module("core.config")
 
 
-def test_configuration_exposes_card_switches_and_template_selector():
+def test_configuration_exposes_single_card_switch_and_template_selector():
     schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
 
     assert schema["card_enabled"]["default"] is True
-    assert schema["card_render_enabled"]["default"] is True
-    assert schema["card_send_enabled"]["default"] is True
-    assert schema["card_template"]["options"] == ["default", "compact", "custom"]
+    assert schema["card_enabled"]["description"] == "渲染并发送信息卡片"
+    assert "card_render_enabled" not in schema
+    assert "card_send_enabled" not in schema
+    assert schema["card_template"]["options"] == [
+        "default",
+        "compact",
+        "apple",
+        "custom",
+    ]
     assert schema["card_custom_template"]["default"] == ""
     assert "APPLE" in schema["emoji_style"]["options"]
     assert schema["single_heavy_render_card"]["invisible"] is True
+
+
+@pytest.mark.parametrize(
+    ("legacy", "expected"),
+    [
+        ({}, True),
+        (
+            {
+                "card_enabled": True,
+                "card_render_enabled": True,
+                "card_send_enabled": True,
+            },
+            True,
+        ),
+        ({"card_render_enabled": True, "card_send_enabled": True}, True),
+        (
+            {
+                "card_enabled": True,
+                "card_render_enabled": False,
+                "card_send_enabled": True,
+            },
+            False,
+        ),
+        (
+            {
+                "card_enabled": False,
+                "card_render_enabled": True,
+                "card_send_enabled": True,
+            },
+            False,
+        ),
+        ({"card_render_enabled": True, "card_send_enabled": False}, False),
+        ({"card_enabled": False}, False),
+    ],
+)
+def test_card_switch_migration_preserves_effective_legacy_state(
+    config_module, legacy: dict[str, bool], expected: bool
+):
+    raw = config_module.AstrBotConfig(legacy)
+
+    config_module.PluginConfig._migrate_card_switches(raw)
+    assert raw["card_enabled"] is expected
+    assert "card_render_enabled" not in raw
+    assert "card_send_enabled" not in raw
+
+
+def test_plugin_config_initialization_migrates_card_switches(
+    config_module, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setattr(
+        config_module, "get_astrbot_plugin_data_path", lambda: str(tmp_path)
+    )
+    monkeypatch.setattr(config_module, "get_astrbot_plugin_path", lambda: str(tmp_path))
+    raw = config_module.AstrBotConfig(
+        {
+            "source_max_size": 90,
+            "source_max_minute": 15,
+            "parsers_template": [],
+            "card_enabled": True,
+            "card_render_enabled": False,
+            "card_send_enabled": True,
+        }
+    )
+    context = SimpleNamespace(
+        get_config=lambda: {"admins_id": [], "timezone": "Asia/Shanghai"}
+    )
+
+    config = config_module.PluginConfig(raw, context)
+
+    assert config.card_enabled is False
+    assert "card_render_enabled" not in raw
+    assert "card_send_enabled" not in raw
+    assert raw.save_calls >= 1
 
 
 def test_test_plugin_identity_is_isolated_from_original_plugin(config_module):

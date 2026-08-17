@@ -56,21 +56,9 @@ class MessageSender:
         self.cfg = config
         self.renderer = renderer
 
-    def _card_render_enabled(self) -> bool:
-        """读取全局卡片渲染开关，并兼容未迁移的旧配置对象。"""
-        value = getattr(self.cfg, "render_card_enabled", None)
-        if value is None:
-            value = getattr(self.cfg, "card_render_enabled", True)
-            value = bool(value and getattr(self.cfg, "card_enabled", True))
-        return bool(value)
-
-    def _card_send_enabled(self) -> bool:
-        """读取全局卡片发送开关，并兼容未迁移的旧配置对象。"""
-        value = getattr(self.cfg, "send_card_enabled", None)
-        if value is None:
-            value = getattr(self.cfg, "card_send_enabled", True)
-            value = bool(value and getattr(self.cfg, "card_enabled", True))
-        return bool(value)
+    def _card_enabled(self) -> bool:
+        """卡片开关开启时，才允许渲染并发送信息卡片。"""
+        return bool(getattr(self.cfg, "card_enabled", True))
 
     async def _render_card_safely(self, result: ParseResult) -> Path | None:
         """隔离卡片渲染异常，确保不会阻断原媒体发送流程。
@@ -164,7 +152,7 @@ class MessageSender:
         该步骤始终先于媒体发送执行；媒体是否折叠仅由 SendGroup 和媒体数量
         决定，卡片不会被折叠进媒体转发节点。
         """
-        if not (self._card_render_enabled() and self._card_send_enabled()):
+        if not self._card_enabled():
             return False
 
         if image_path := await self._render_card_safely(result):

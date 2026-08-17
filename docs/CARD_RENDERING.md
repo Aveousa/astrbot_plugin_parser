@@ -24,9 +24,7 @@
 
 | 配置键 | 默认值 | 作用 |
 | --- | --- | --- |
-| `card_enabled` | `true` | 卡片总开关 |
-| `card_render_enabled` | `true` | 是否允许 HTML/PNG 渲染 |
-| `card_send_enabled` | `true` | 是否允许把卡片插入消息链 |
+| `card_enabled` | `true` | 是否渲染并发送信息卡片 |
 | `card_template` | `default` | 选择模板名 |
 | `card_custom_template` | `""` | 选择 `custom` 后使用的模板文件名 |
 | `emoji_style` | `APPLE` | 表情字体风格标识 |
@@ -34,7 +32,7 @@
 
 卡片策略按整个 `ParseResult` 决定，而不是按单个媒体分组决定：
 
-1. `card_enabled`、`card_render_enabled` 和 `card_send_enabled` 均开启时，先独立发送一张信息卡片；
+1. `card_enabled` 开启时，先独立渲染并发送一张信息卡片；
 2. 卡片渲染或发送失败只记录日志，后续媒体发送和折叠策略继续执行；
 3. 卡片不计入 `forward_threshold`，也不会被放进媒体的合并转发节点。
 
@@ -48,7 +46,7 @@
 
 1. `<AstrBot 插件数据目录>/astrbot_plugin_parser_test/templates/`
 2. `<插件安装目录>/templates/`
-3. `core/templates/`（内置 `default.html`、`compact.html`）
+3. `core/templates/`（内置 `default.html`、`compact.html`、`apple.html`）
 
 将 `my_card.html` 放入第一目录后，在插件页将 `card_template` 选择为 `custom`，再把 `card_custom_template` 填为 `my_card` 即可。文件名会做路径净化，不能通过配置读取目录外文件。
 
@@ -137,8 +135,8 @@ python -m pytest -q
 - JSON 卡片 URL 提取只优先识别四个保留平台；
 - Cookie 解析继续通过既有回归用例；
 - 统一统计字段的数值归一化、模板上下文和 Apple Emoji 包装；
-- 关闭 `card_enabled` / `card_render_enabled` / `card_send_enabled` 时，不生成或不发送卡片，但媒体发送计划保持可用；
-- `default`、`compact` 和用户覆盖模板均可被加载，并可读取同目录的相对静态资源；
+- 关闭 `card_enabled` 时，不生成也不发送卡片，但媒体发送计划保持可用；
+- `default`、`compact`、`apple` 和用户覆盖模板均可被加载，并可读取同目录的相对静态资源；
 - Playwright 通过 `chrome-headless-shell` 输出 PNG，复用浏览器进程，并在截图后删除临时 HTML；
 - 既有缓存清理任务会统一清理卡片、下载媒体和 Emoji 缓存；
 - Bilibili、抖音、小红书、Pixiv 的统计字段在 API 字段缺失时不影响原有解析结果。

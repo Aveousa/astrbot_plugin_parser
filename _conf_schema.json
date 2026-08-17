@@ -59,20 +59,8 @@
     "default": 2
   },
   "card_enabled": {
-    "description": "启用卡片功能",
-    "hint": "总开关：关闭后既不渲染也不发送卡片",
-    "type": "bool",
-    "default": true
-  },
-  "card_render_enabled": {
-    "description": "启用卡片渲染",
-    "hint": "关闭后保留原媒体发送流程，不生成 HTML/PDF/PNG",
-    "type": "bool",
-    "default": true
-  },
-  "card_send_enabled": {
-    "description": "发送渲染卡片",
-    "hint": "关闭后只发送原媒体，不发送卡片消息段",
+    "description": "渲染并发送信息卡片",
+    "hint": "关闭后不生成 HTML/PNG，也不发送卡片；原媒体发送流程不受影响",
     "type": "bool",
     "default": true
   },
@@ -80,8 +68,8 @@
     "description": "卡片模板",
     "hint": "可在插件 templates 目录或数据目录 templates 中添加同名 HTML 模板",
     "type": "string",
-    "options": ["default", "compact", "custom"],
-    "labels": ["标准卡片", "紧凑卡片", "自定义模板"],
+    "options": ["default", "compact", "apple", "custom"],
+    "labels": ["标准卡片", "紧凑卡片", "Apple 风格卡片", "自定义模板"],
     "default": "default"
   },
   "card_custom_template": {
