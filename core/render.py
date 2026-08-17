@@ -75,6 +75,7 @@ _EMOJI_CHARACTER = rf"{_EMOJI_BASE}{_EMOJI_SUFFIX}"
 _EMOJI_RE = re.compile(
     rf"(?:[\U0001F1E6-\U0001F1FF]{{2}}|{_EMOJI_CHARACTER}(?:\u200d{_EMOJI_CHARACTER})*)"
 )
+_EMPTY_DESCRIPTION_RE = re.compile(r"^(?:简介\s*[:：]\s*)?[-—–]+$")
 
 
 class Renderer:
@@ -442,6 +443,12 @@ class Renderer:
             return None
 
     @staticmethod
+    def _card_text(value: str | None) -> str | None:
+        """过滤空白与解析器常见的“简介：-”占位描述。"""
+        text = (value or "").strip()
+        return None if not text or _EMPTY_DESCRIPTION_RE.fullmatch(text) else text
+
+    @staticmethod
     async def _media_path(content: MediaContent) -> Path | None:
         """返回卡片可直接展示的本地图片，并为无封面视频提供占位图。"""
         try:
@@ -533,7 +540,7 @@ class Renderer:
             if result.author
             else None,
             "title": result.title,
-            "text": result.text,
+            "text": self._card_text(result.text),
             "timestamp": result.timestamp,
             "datetime": result.formatted_datetime(),
             "url": result.url,

@@ -149,7 +149,8 @@ class BilibiliParser(BaseParser):
         # 转换为 msgspec struct
         video_info = convert(await video.get_info(), VideoInfo)
         # 获取简介
-        text = f"简介: {video_info.desc}" if video_info.desc else None
+        description = (video_info.desc or "").strip()
+        text = f"简介: {description}" if description and description not in {"-", "—", "–"} else None
         # up
         author = self.create_author(video_info.owner.name, video_info.owner.face)
         # 处理分 p

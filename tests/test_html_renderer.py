@@ -186,6 +186,33 @@ def test_video_without_cover_uses_error_placeholder(renderer_module, tmp_path: P
     assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
 
 
+@pytest.mark.parametrize("template", ["default", "apple"])
+def test_placeholder_description_does_not_render_an_intro_box(
+    renderer_module, tmp_path: Path, template: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+
+    video = tmp_path / "video.mp4"
+    cover = tmp_path / "cover.jpg"
+    video.write_bytes(b"video")
+    cover.write_bytes(b"cover")
+    result = ParseResult(
+        platform=Platform("bilibili", "Bilibili"),
+        title="无简介视频",
+        text="简介：-",
+        contents=[VideoContent(video, cover=cover)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    html = renderer.render_html(result, context)
+    assert context["card"]["text"] is None
+    assert 'class="video-description"' not in html
+    assert "简介：-" not in html
+
+
 def test_image_gallery_ignores_failed_items_and_keeps_completed_image(
     renderer_module, tmp_path: Path
 ):
