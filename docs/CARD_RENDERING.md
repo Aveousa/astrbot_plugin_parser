@@ -15,7 +15,8 @@
 - 解析器只负责填充实体；不直接拼接 HTML，也不决定卡片发送时机。
 - `Renderer.render_card(result)` 是卡片层唯一入口，失败返回 `None`，不会阻断媒体下载/发送。
 - `MessageSender` 仍然负责分组、合并转发、媒体类型转换和文本兜底。
-- `SendGroup.render_card` 是平台局部偏好；全局卡片开关优先级更高，不能被局部设置绕过。
+- `MessageSender` 在每个 `ParseResult` 的媒体发送前统一处理一次信息卡片；全局卡片开关开启时，任何平台和媒体类型都会尝试渲染并发送该卡片。
+- `SendGroup` 仅描述媒体分组和是否折叠转发；旧的 `SendGroup.render_card` 字段只为兼容旧解析器保留，不再决定卡片是否发送。
 - 发送器对渲染器和卡片预览发送再做一层异常隔离；卡片失败时不会发送该卡片，
   自动合并策略会按实际媒体段数重算，避免失败的卡片改变媒体发送方式。
 
@@ -29,14 +30,15 @@
 | `card_template` | `default` | 选择模板名 |
 | `card_custom_template` | `""` | 选择 `custom` 后使用的模板文件名 |
 | `emoji_style` | `APPLE` | 表情字体风格标识 |
-| `single_heavy_render_card` | `false` | 默认策略下，单一重媒体是否请求卡片 |
+| `single_heavy_render_card` | `false` | 已废弃，仅兼容旧配置；不再影响卡片策略 |
 
-发送器会把策略拆为两个状态：
+卡片策略按整个 `ParseResult` 决定，而不是按单个媒体分组决定：
 
-1. `render_card`：局部策略和渲染总开关均允许；
-2. `send_card`：在 `render_card` 基础上，发送开关也允许。
+1. `card_enabled`、`card_render_enabled` 和 `card_send_enabled` 均开启时，先独立发送一张信息卡片；
+2. 卡片渲染或发送失败只记录日志，后续媒体发送和折叠策略继续执行；
+3. 卡片不计入 `forward_threshold`，也不会被放进媒体的合并转发节点。
 
-只有 `send_card` 为真时，卡片才会计入合并阈值、参与预览消息或加入合并转发。这样关闭卡片不会改变原媒体段数和发送顺序。
+抖音图集会显式保留媒体分组：单张（含实况）作品发送“信息卡片 + 原媒体”；多张（含实况）作品先发送信息卡片，再把全部解析媒体作为一份合并转发发送。
 
 启动时会迁移解析器配置：移除已下线平台的条目，为四个保留平台补齐默认项；旧版 Bilibili 的 `video_codecs` 单值会自动转换为 `video_codec_list`，保留用户原有编码偏好。
 

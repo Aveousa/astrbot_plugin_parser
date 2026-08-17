@@ -71,6 +71,7 @@ def test_configuration_exposes_card_switches_and_template_selector():
     assert schema["card_template"]["options"] == ["default", "compact", "custom"]
     assert schema["card_custom_template"]["default"] == ""
     assert "APPLE" in schema["emoji_style"]["options"]
+    assert schema["single_heavy_render_card"]["invisible"] is True
 
 
 def test_test_plugin_identity_is_isolated_from_original_plugin(config_module):

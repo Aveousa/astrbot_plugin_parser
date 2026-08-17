@@ -10,6 +10,7 @@ from astrbot.api import logger
 
 from ...config import PluginConfig
 from ...cookie import CookieJar
+from ...data import SendGroup
 from ..base import (
     BaseParser,
     Downloader,
@@ -36,6 +37,18 @@ class DouyinParser(BaseParser):
     TTWID_REGISTER_URL: ClassVar[str] = (
         "https://ttwid.bytedance.com/ttwid/union/register/"
     )
+
+    @staticmethod
+    def _gallery_send_groups(contents: list, item_count: int) -> list[SendGroup]:
+        """为抖音图集保留“卡片在前、媒体按图集折叠”的发送语义。
+
+        信息卡片由 ``MessageSender`` 针对整个 ``ParseResult`` 独立发送；这里
+        仅明确图集媒体的合并方式。以原始作品项数判断，而不是以解析后的媒体
+        段数判断，确保单张实况图即使同时生成图片和动态媒体也不会被折叠。
+        """
+        if not contents:
+            return []
+        return [SendGroup(contents=contents, force_merge=item_count > 1)]
 
     def __init__(self, config: PluginConfig, downloader: Downloader):
         super().__init__(config, downloader)
@@ -231,6 +244,7 @@ class DouyinParser(BaseParser):
         )
         # 使用新的简洁构建方式
         contents = []
+        send_groups: list[SendGroup] = []
 
         # 添加图片内容
         if image_urls := video_data.image_urls:
@@ -238,6 +252,7 @@ class DouyinParser(BaseParser):
             contents.extend(
                 self.create_image_contents(image_urls, headers=self.ios_headers)
             )
+            send_groups = self._gallery_send_groups(contents, len(image_urls))
 
         # 添加视频内容
         elif video_data.video:
@@ -282,6 +297,7 @@ class DouyinParser(BaseParser):
             title=video_data.desc,
             author=author,
             contents=contents,
+            send_groups=send_groups,
             timestamp=video_data.create_time,
             like_count=engagement.likes,
             comment_count=engagement.comments,
@@ -410,6 +426,9 @@ class DouyinParser(BaseParser):
             title=slides_data.desc,
             author=author,
             contents=contents,
+            send_groups=self._gallery_send_groups(
+                contents, len(slides_data.images)
+            ),
             timestamp=slides_data.create_time,
             like_count=engagement.likes,
             comment_count=engagement.comments,

@@ -46,10 +46,11 @@
     "default": true
   },
   "single_heavy_render_card": {
-    "description": "单条重媒体渲染卡片",
-    "hint": "仅影响视频、音频、文件的默认发送策略；可由下方总开关统一关闭",
+    "description": "（已废弃）单条重媒体渲染卡片",
+    "hint": "信息卡片总开关开启时，所有解析结果都会发送一张信息卡片；此项仅保留用于兼容旧配置。",
     "type": "bool",
-    "default": false
+    "default": false,
+    "invisible": true
   },
   "forward_threshold": {
     "description": "合并转发阈值",

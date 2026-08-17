@@ -257,10 +257,12 @@ class Author:
 
 @dataclass(repr=False, slots=True)
 class SendGroup:
-    """通用发送分组。sender 按分组顺序执行，但不理解平台语义。"""
+    """通用媒体发送分组。sender 按分组顺序执行，但不理解平台语义。"""
 
     contents: list[MediaContent] = field(default_factory=list)
     force_merge: bool | None = None
+    # 仅为旧版平台解析器保留。信息卡片现在按 ParseResult 全局且只发送一次，
+    # 不再由单个媒体分组决定。
     render_card: bool | None = None
 
 

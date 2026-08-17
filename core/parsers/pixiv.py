@@ -508,10 +508,8 @@ class PixivParser(BaseParser):
         )
 
         send_groups: list[SendGroup] = [
-            SendGroup(contents=[], render_card=True, force_merge=False),
             SendGroup(
                 contents=[FileContent(txt_path, name=f"pixiv_{nid}.txt")],
-                render_card=False,
                 force_merge=False,
             ),
         ]
@@ -562,9 +560,7 @@ class PixivParser(BaseParser):
             if ugoira_meta is None:
                 illust_type = 0  # 回退为普通插画处理
 
-        send_groups: list[SendGroup] = [
-            SendGroup(contents=[], render_card=True, force_merge=False),
-        ]
+        send_groups: list[SendGroup] = []
 
         if blur:
             # R18：封面已模糊，正文合成为 PDF
@@ -591,7 +587,6 @@ class PixivParser(BaseParser):
             send_groups.append(
                 SendGroup(
                     contents=[FileContent(pdf_task, name=f"pixiv_{pid}.pdf")],
-                    render_card=False,
                     force_merge=False,
                 )
             )
@@ -617,7 +612,6 @@ class PixivParser(BaseParser):
             send_groups.append(
                 SendGroup(
                     contents=content_contents,
-                    render_card=False,
                     force_merge=False,
                 )
             )
@@ -682,10 +676,7 @@ class PixivParser(BaseParser):
                 text=text,
                 url=f"{PIXIV_BASE}/artworks/{pid}",
                 contents=cover_contents,
-                send_groups=[ # 如果只构建卡片会再发一次纯文本，不确定是不是sender的bug，先用发送封面图缓解
-                    SendGroup(contents=[], render_card=True, force_merge=False),
-                    SendGroup(contents=cover_contents, render_card=False, force_merge=False),
-                ],
+                send_groups=[SendGroup(contents=cover_contents, force_merge=False)],
                 timestamp=PixivHelper.parse_timestamp(create_date),
                 like_count=engagement.likes,
                 comment_count=engagement.comments,
@@ -712,10 +703,8 @@ class PixivParser(BaseParser):
         pdf_task = asyncio.create_task(self._build_pdf(img_paths_task, pid))
 
         send_groups: list[SendGroup] = [
-            SendGroup(contents=[], render_card=True, force_merge=False),
             SendGroup(
                 contents=[FileContent(pdf_task, name=f"pixiv_{pid}.pdf")],
-                render_card=False,
                 force_merge=False,
             ),
         ]

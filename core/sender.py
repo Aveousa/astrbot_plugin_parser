@@ -42,7 +42,8 @@ class MessageSender:
 
     职责：
     - 根据解析结果（ParseResult）规划发送策略
-    - 控制是否渲染卡片、是否强制合并转发
+    - 在全局开关开启时为每个解析结果发送一张独立信息卡片
+    - 控制媒体是否强制合并转发
     - 将不同类型的内容转换为 AstrBot 消息组件并发送
 
     重要原则：
@@ -117,7 +118,6 @@ class MessageSender:
         contents: list | tuple | None = None,
         *,
         force_merge_override: bool | None = None,
-        render_card_override: bool | None = None,
     ) -> dict:
         """
         根据解析结果生成发送计划（plan）
@@ -138,16 +138,9 @@ class MessageSender:
                 case _:
                     light.append(cont)
 
-        # 仅在“单一重媒体且无其他内容”时，才允许渲染卡片。SendGroup
-        # 可表达平台的特殊分组需求，但全局开关始终拥有更高优先级。
-        is_single_heavy = len(heavy) == 1 and not light
-        render_card = is_single_heavy and self.cfg.single_heavy_render_card
-        if render_card_override is not None:
-            render_card = render_card_override
-        render_card = render_card and self._card_render_enabled()
-        send_card = render_card and self._card_send_enabled()
-        # 实际消息段数量（卡片也算一个段）
-        seg_count = len(light) + len(heavy) + (1 if send_card else 0)
+        # 信息卡片由 send_parse_result 按每个 ParseResult 单独处理一次，不能被
+        # SendGroup 的内容数量或旧版 render_card 偏好影响。
+        seg_count = len(light) + len(heavy)
 
         # 达到阈值后，强制合并转发，避免刷屏
         force_merge = seg_count >= self.cfg.forward_threshold
@@ -157,48 +150,31 @@ class MessageSender:
         return {
             "light": light,
             "heavy": heavy,
-            "render_card": render_card,
-            "send_card": send_card,
-            # 预览卡片：仅在“渲染卡片 + 不合并”时独立发送
-            "preview_card": send_card and not force_merge,
             "force_merge": force_merge,
-            # 渲染失败时，只有自动计算的合并策略可以按实际媒体数量重算；
-            # 平台通过 SendGroup 明确指定的 force_merge 仍然保持原语义。
-            "force_merge_explicit": force_merge_override is not None,
         }
 
-    def _disable_failed_card(self, plan: dict) -> None:
-        """移除失败卡片，并避免失败的附加段改变媒体发送策略。"""
-        plan["send_card"] = False
-        plan["render_card"] = False
-        plan["preview_card"] = False
-        if not plan.get("force_merge_explicit", False):
-            media_count = len(plan.get("light", ())) + len(plan.get("heavy", ()))
-            plan["force_merge"] = media_count >= self.cfg.forward_threshold
-
-    async def _send_preview_card(
+    async def _send_result_card(
         self,
         event: AstrMessageEvent,
         result: ParseResult,
-        plan: dict,
-    ):
+    ) -> bool:
         """
-        发送预览卡片（独立消息）
+        按 ParseResult 发送唯一的信息卡片（独立消息）。
 
-        场景：
-        - 只有一个重媒体
-        - 未触发合并转发
-        - 卡片作为“预览”，不与正文混合
+        该步骤始终先于媒体发送执行；媒体是否折叠仅由 SendGroup 和媒体数量
+        决定，卡片不会被折叠进媒体转发节点。
         """
-        if not plan["preview_card"]:
-            return
+        if not (self._card_render_enabled() and self._card_send_enabled()):
+            return False
 
         if image_path := await self._render_card_safely(result):
             try:
                 await event.send(event.chain_result([self._image_from_path(image_path)]))
+                return True
             except Exception as exc:
-                # 卡片预览是附加消息；预览发送失败也不能阻断后续媒体。
-                logger.error(f"卡片预览发送失败，继续发送媒体: {exc}")
+                # 卡片是附加消息；发送失败也不能阻断后续媒体。
+                logger.error(f"信息卡片发送失败，继续发送媒体: {exc}")
+        return False
 
     async def _build_segments(
         self,
@@ -213,17 +189,6 @@ class MessageSender:
         - 转换为 AstrBot 消息组件
         """
         segs: list[BaseMessageComponent] = []
-
-        # 合并转发时，卡片以内联形式作为一个消息段参与合并
-        if plan["send_card"] and plan["force_merge"]:
-            if image_path := await self._render_card_safely(result):
-                try:
-                    segs.append(self._image_from_path(image_path))
-                except Exception as exc:
-                    logger.error(f"卡片消息段创建失败，继续发送媒体: {exc}")
-                    self._disable_failed_card(plan)
-            else:
-                self._disable_failed_card(plan)
 
         # 轻媒体处理
         for cont in plan["light"]:
@@ -336,10 +301,7 @@ class MessageSender:
             result,
             group.contents,
             force_merge_override=group.force_merge,
-            render_card_override=group.render_card,
         )
-
-        await self._send_preview_card(event, result, plan)
 
         segs = await self._build_segments(result, plan)
         segs = self._merge_segments_if_needed(event, segs, plan["force_merge"])
@@ -380,13 +342,16 @@ class MessageSender:
         发送解析结果的统一入口
 
         执行顺序固定：
-        1. 构建发送计划
-        2. 发送预览卡片（如有）
-        3. 构建消息段
-        4. 必要时合并转发
-        5. 最终发送
+        1. 发送全局信息卡片（如启用）
+        2. 为各媒体分组构建发送计划和消息段
+        3. 必要时合并转发
+        4. 发送媒体；没有可发送媒体时保留原有文本兜底
         """
         groups = self._resolve_groups(result)
+
+        # 全局卡片开关开启时，每个解析结果固定先发送一张信息卡片。媒体分组
+        # 只决定媒体本身是否折叠，避免图集因卡片计数而改变发送结构。
+        await self._send_result_card(event, result)
 
         sent = False
         for group in groups:
