@@ -74,6 +74,25 @@ class _Config:
         self.plugin_dir.mkdir()
 
 
+@pytest.mark.parametrize("template", ["default", "compact", "apple"])
+def test_builtin_templates_use_bundled_douyin_sans(
+    renderer_module, tmp_path: Path, template: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    result = ParseResult(platform=Platform("test", "Test"), title="字体测试")
+
+    font_path = renderer_module.Renderer._CARD_FONT_PATH
+    assert font_path.name == "douyin_sans.otf"
+    assert font_path.read_bytes()[:4] == b"OTTO"
+
+    html = renderer.render_html(result, asyncio.run(renderer._result_context(result)))
+    assert f'url("{font_path.resolve().as_uri()}")' in html
+    assert 'font-family: "Douyin Sans"' in html
+    assert "HYSongYunLangHeiW-1" not in html
+
+
 class _FakePage:
     def __init__(self):
         self.goto_calls: list[tuple[str, dict]] = []

@@ -3,9 +3,13 @@
 <head>
   <meta charset="utf-8">
   <style>
+    {% if card_font_uri %}
+    @font-face { font-family: "Douyin Sans"; src: url("{{ card_font_uri }}") format("opentype");
+                 font-style: normal; font-weight: normal; font-display: block; }
+    {% endif %}
     @page { size: 680px 2000px; margin: 0; }
     body { margin: 0; padding: 18px 22px; width: 636px; color: #252a31;
-           font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 15px; line-height: 1.45; }
+           font-family: "Douyin Sans", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 15px; line-height: 1.45; }
     .head { color: #64748b; font-size: 13px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
     h1 { font-size: 22px; margin: 10px 0 4px; }
     .text { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; }

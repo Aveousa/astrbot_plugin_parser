@@ -91,6 +91,7 @@ class Renderer:
     BUILTIN_TEMPLATE_NAMES: ClassVar[tuple[str, ...]] = ("default", "compact")
     _TEMPLATES_DIR: ClassVar[Path] = Path(__file__).with_name("templates")
     _RESOURCES_DIR: ClassVar[Path] = Path(__file__).with_name("resources")
+    _CARD_FONT_PATH: ClassVar[Path] = _RESOURCES_DIR / "douyin_sans.otf"
     _VIDEO_ERROR_COVER_NAMES: ClassVar[tuple[str, ...]] = ("err.png", "error.png")
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
@@ -608,6 +609,7 @@ class Renderer:
             config=self.cfg,
             template_name=self._template_name(),
             emoji_style=str(getattr(self.cfg, "emoji_style", "APPLE") or "APPLE").lower(),
+            card_font_uri=self._file_uri(self._CARD_FONT_PATH),
         )
 
     async def _render_playwright_png(

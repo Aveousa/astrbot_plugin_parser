@@ -4,22 +4,25 @@ from msgspec import Struct, field
 
 
 class PlayAddr(Struct):
-    url_list: list[str]
+    uri: str | None = None
+    url_list: list[str] = field(default_factory=list)
 
 
 class Cover(Struct):
-    url_list: list[str]
+    url_list: list[str] = field(default_factory=list)
 
 
 class Video(Struct):
-    play_addr: PlayAddr
-    cover: Cover
-    duration: int
+    play_addr: PlayAddr = field(default_factory=PlayAddr)
+    play_addr_h264: PlayAddr | None = None
+    cover: Cover = field(default_factory=Cover)
+    duration: int = 0
 
 
 class Image(Struct):
     video: Video | None = None
     url_list: list[str] = field(default_factory=list)
+    clip_type: int | None = None
 
 
 class Avatar(Struct):
@@ -64,6 +67,8 @@ class SlidesData(Struct):
             choice(image.video.play_addr.url_list)
             for image in self.images
             if image.video
+            and image.clip_type != 5
+            and image.video.play_addr.url_list
         ]
 
 

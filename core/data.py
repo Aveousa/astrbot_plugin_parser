@@ -327,6 +327,11 @@ class ParseResult:
         return self.extra.get("info")
 
     @property
+    def has_motion_photo(self) -> bool:
+        """当前结果是否包含已识别的实况图。"""
+        return self.extra.get("has_motion_photo") is True
+
+    @property
     def engagement(self) -> EngagementStats:
         """以统一对象暴露互动统计，供模板和扩展使用。"""
         return EngagementStats(

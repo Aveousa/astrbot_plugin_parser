@@ -32,18 +32,20 @@ class PlayAddr(Struct):
 
 
 class Cover(Struct):
-    url_list: list[str]
+    url_list: list[str] = field(default_factory=list)
 
 
 class Video(Struct):
-    play_addr: PlayAddr
-    cover: Cover
-    duration: int
+    play_addr: PlayAddr = field(default_factory=PlayAddr)
+    play_addr_h264: PlayAddr | None = None
+    cover: Cover = field(default_factory=Cover)
+    duration: int = 0
 
 
 class Image(Struct):
     video: Video | None = None
     url_list: list[str] = field(default_factory=list)
+    clip_type: int | None = None
 
 
 class VideoData(Struct):
@@ -100,6 +102,13 @@ class VideoInfoRes(Struct):
         if len(self.item_list) == 0:
             raise ParseException("can't find data in videoInfoRes")
         return choice(self.item_list)
+
+
+class AwemeDetailRes(Struct):
+    """抖音 Web 详情接口响应，用于补全实况图媒体字段。"""
+
+    status_code: int = 0
+    aweme_detail: VideoData | None = None
 
 
 class VideoOrNotePage(Struct):

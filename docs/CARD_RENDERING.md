@@ -88,6 +88,8 @@ Jinja2 自动转义已启用。内置可用过滤器：
 
 渲染器使用 Playwright 驱动 Chrome Headless Shell 对 Jinja2 生成的 HTML 做全页 PNG 截图，不再通过 PDF、PyMuPDF、Pillow 或其他卡片绘图库转换。浏览器进程在插件生命周期内复用，避免为每张卡片重复启动。模板不存在、浏览器不可用或截图失败时，渲染器会记录异常并返回 `None`；发送器因此跳过卡片，但继续原媒体发送流程。
 
+三个内置模板统一通过 `@font-face` 加载 `core/resources/douyin_sans.otf`，字体族名为 `Douyin Sans`；自定义模板也可以直接使用渲染上下文中的 `card_font_uri` 引用该字体。
+
 ### 运行前提
 
 安装 Python 依赖后，必须额外安装与 `playwright` 版本匹配的浏览器二进制：

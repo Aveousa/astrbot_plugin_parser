@@ -3,11 +3,15 @@
 <head>
   <meta charset="utf-8">
   <style>
+    {% if card_font_uri %}
+    @font-face { font-family: "Douyin Sans"; src: url("{{ card_font_uri }}") format("opentype");
+                 font-style: normal; font-weight: normal; font-display: block; }
+    {% endif %}
     @page { size: 760px 2000px; margin: 0; }
 
     :root {
       color-scheme: light;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
+      font-family: "Douyin Sans", -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
 
