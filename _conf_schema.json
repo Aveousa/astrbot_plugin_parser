@@ -70,7 +70,7 @@
     "type": "string",
     "options": ["default", "compact", "apple", "custom"],
     "labels": ["标准卡片", "紧凑卡片", "Apple 风格卡片", "自定义模板"],
-    "default": "default"
+    "default": "apple"
   },
   "card_custom_template": {
     "description": "自定义卡片模板文件名",

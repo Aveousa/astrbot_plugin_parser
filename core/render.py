@@ -88,7 +88,11 @@ class Renderer:
     3. ``core/templates``，内置兜底模板。
     """
 
-    BUILTIN_TEMPLATE_NAMES: ClassVar[tuple[str, ...]] = ("default", "compact")
+    BUILTIN_TEMPLATE_NAMES: ClassVar[tuple[str, ...]] = (
+        "default",
+        "compact",
+        "apple",
+    )
     _TEMPLATES_DIR: ClassVar[Path] = Path(__file__).with_name("templates")
     _RESOURCES_DIR: ClassVar[Path] = Path(__file__).with_name("resources")
     _CARD_FONT_PATH: ClassVar[Path] = _RESOURCES_DIR / "douyin_sans.otf"
@@ -98,7 +102,17 @@ class Renderer:
         "favorites": "favorites.png",
         "shares": "share.png",
     }
-    _VIDEO_ERROR_COVER_NAMES: ClassVar[tuple[str, ...]] = ("err.png", "error.png")
+    _PLATFORM_LOGO_NAMES: ClassVar[dict[str, str]] = {
+        "bilibili": "bilibili.png",
+        "douyin": "douyin.png",
+        "xhs": "xhs.png",
+        "pixiv": "pixiv.png",
+    }
+    _LIVE_PHOTO_ICON_NAME: ClassVar[str] = "livep.png"
+    _LIVE_PHOTO_HINT: ClassVar[str] = (
+        "（对于除Apple、vivo机型以外的手机）可尝试点击“查看原图”后保存获取实况图~"
+    )
+    _ERROR_PREVIEW_IMAGE_NAMES: ClassVar[tuple[str, ...]] = ("error.png", "err.png")
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
     # A short viewport keeps the browser from padding compact cards to a large
@@ -455,8 +469,16 @@ class Renderer:
         text = (value or "").strip()
         return None if not text or _EMPTY_DESCRIPTION_RE.fullmatch(text) else text
 
-    @staticmethod
-    async def _media_path(content: MediaContent) -> Path | None:
+    @classmethod
+    def _error_preview_path(cls) -> Path | None:
+        for filename in cls._ERROR_PREVIEW_IMAGE_NAMES:
+            fallback = cls._RESOURCES_DIR / filename
+            if fallback.is_file():
+                return fallback
+        return None
+
+    @classmethod
+    async def _media_path(cls, content: MediaContent) -> Path | None:
         """返回卡片可直接展示的本地图片，并为失效视频封面提供占位图。"""
         if isinstance(content, VideoContent):
             try:
@@ -467,16 +489,16 @@ class Renderer:
 
             if cover and cover.is_file():
                 return cover
-            for filename in Renderer._VIDEO_ERROR_COVER_NAMES:
-                fallback = Renderer._RESOURCES_DIR / filename
-                if fallback.is_file():
-                    return fallback
-            return None
+            return cls._error_preview_path()
 
         try:
             if isinstance(content, (ImageContent, GraphicsContent)):
                 path = await content.get_path()
-                return path if path.is_file() else None
+                if path.is_file():
+                    return path
+                if isinstance(content, ImageContent) and content.card_error_placeholder:
+                    return cls._error_preview_path()
+                return None
             if isinstance(content, DynamicContent):
                 # 动态内容若已有 GIF/图片副本，优先用它作为静态卡片封面。
                 if content.gif_path and content.gif_path.is_file():
@@ -493,6 +515,8 @@ class Renderer:
                 }:
                     return path
         except (DownloadException, OSError, RuntimeError):
+            if isinstance(content, ImageContent) and content.card_error_placeholder:
+                return cls._error_preview_path()
             return None
         return None
 
@@ -535,6 +559,14 @@ class Renderer:
                 avatar_path = None
 
         contents = [await self._content_context(content) for content in result.contents]
+        platform_name = result.platform.name.lower()
+        platform_logo_name = self._PLATFORM_LOGO_NAMES.get(platform_name)
+        platform_logo_uri = (
+            self._file_uri(self._RESOURCES_DIR / "logos" / platform_logo_name)
+            if platform_logo_name
+            else None
+        )
+        has_live_photo = platform_name == "douyin" and result.has_motion_photo
         stats = result.engagement.as_dict()
         stat_items = [
             {
@@ -552,7 +584,11 @@ class Renderer:
             )
         ]
         card: dict[str, Any] = {
-            "platform": {"name": result.platform.name, "display_name": result.platform.display_name},
+            "platform": {
+                "name": result.platform.name,
+                "display_name": result.platform.display_name,
+                "logo_uri": platform_logo_uri,
+            },
             "author": {
                 "name": result.author.name,
                 "description": result.author.description,
@@ -568,6 +604,13 @@ class Renderer:
             "url": result.url,
             "extra": result.extra,
             "extra_info": result.extra_info,
+            "has_live_photo": has_live_photo,
+            "live_photo_uri": (
+                self._file_uri(self._RESOURCES_DIR / self._LIVE_PHOTO_ICON_NAME)
+                if has_live_photo
+                else None
+            ),
+            "live_photo_hint": self._LIVE_PHOTO_HINT if has_live_photo else None,
             "stats": stats,
             "stat_items": [item for item in stat_items if item["value"] is not None],
             "contents": contents,
@@ -581,14 +624,14 @@ class Renderer:
         return {"card": card}
 
     def _template_name(self) -> str:
-        requested = str(getattr(self.cfg, "card_template", "default") or "default").strip()
+        requested = str(getattr(self.cfg, "card_template", "apple") or "apple").strip()
         if requested == "custom":
             custom_name = str(getattr(self.cfg, "card_custom_template", "") or "").strip()
             # 兼容旧配置直接把 card_template 写成模板名的用法。
             requested = custom_name or requested
         # 禁止从配置注入目录路径；同名的用户模板依然可以被发现。
         requested = Path(requested).name.removesuffix(".html")
-        return requested or "default"
+        return requested or "apple"
 
     def _template_base_dir(self) -> Path:
         """返回最终使用模板所在目录，供相对静态资源解析。

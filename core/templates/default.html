@@ -12,9 +12,13 @@
     body { margin: 0; padding: 28px; color: #242424; background: #fff;
            font-family: "Douyin Sans", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
            font-size: 17px; line-height: 1.55; }
-    .card { width: 704px; }
-    .header { display: flex; align-items: center; gap: 14px; padding-bottom: 16px;
+    .card { position: relative; width: 704px; }
+    .header { display: flex; align-items: center; gap: 14px; padding: 0 92px 16px 0;
               border-bottom: 1px solid #ececf0; }
+    .card-badges { position: absolute; top: 17px; right: 0; display: flex; align-items: center;
+                    gap: 7px; height: 24px; }
+    .card-badge__live { display: block; width: 24px; height: 24px; object-fit: contain; opacity: .76; }
+    .card-badge__platform { display: block; width: 48px; height: 24px; object-fit: contain; object-position: center; }
     .avatar { width: 58px; height: 58px; border-radius: 50%; object-fit: cover; background: #eef1f5; }
     .author-name { font-size: 21px; font-weight: 700; }
     .platform { color: #6f7782; font-size: 14px; margin-top: 2px; }
@@ -41,6 +45,8 @@
     .stat__fallback { color: #69717d; font-size: 16px; line-height: 1; }
     .stat strong { color: #343a40; font-weight: 600; }
     .url { color: #5978a7; font-size: 12px; overflow-wrap: anywhere; margin-top: 12px; }
+    .live-photo-hint { margin-top: 16px; padding-top: 12px; color: #818894; border-top: 1px solid #ececf0;
+                        font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
     .repost { margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #f7f8fa;
               border: 1px solid #ececf0; }
     .emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
@@ -49,6 +55,12 @@
 </head>
 <body>
 <main class="card" data-card-root>
+  {% if platform.logo_uri or card.live_photo_uri %}
+  <div class="card-badges">
+    {% if card.live_photo_uri %}<img class="card-badge__live" src="{{ card.live_photo_uri }}" alt="实况图">{% endif %}
+    {% if platform.logo_uri %}<img class="card-badge__platform" src="{{ platform.logo_uri }}" alt="{{ platform.display_name }}">{% endif %}
+  </div>
+  {% endif %}
   <header class="header">
     {% if author and author.avatar_uri %}<img class="avatar" src="{{ author.avatar_uri }}" alt="">{% else %}<span class="avatar"></span>{% endif %}
     <div>
@@ -96,6 +108,7 @@
     {% for item in card.repost.contents if item.uri %}<img class="media" src="{{ item.uri }}" alt="{{ item.alt or '' }}">{% endfor %}
   </section>
   {% endif %}
+  {% if card.live_photo_hint %}<div class="live-photo-hint">{{ card.live_photo_hint }}</div>{% endif %}
 </main>
 </body>
 </html>

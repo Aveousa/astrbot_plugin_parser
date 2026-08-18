@@ -104,6 +104,81 @@ def test_builtin_templates_use_bundled_douyin_sans(
         assert (font_path.parent / icon_name).resolve().as_uri() in html
 
 
+@pytest.mark.parametrize("template", ["default", "compact", "apple"])
+@pytest.mark.parametrize(
+    ("platform_name", "logo_name"),
+    [
+        ("bilibili", "bilibili.png"),
+        ("douyin", "douyin.png"),
+        ("xhs", "xhs.png"),
+        ("pixiv", "pixiv.png"),
+    ],
+)
+def test_builtin_templates_render_supported_platform_logo(
+    renderer_module, tmp_path: Path, template: str, platform_name: str, logo_name: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    result = ParseResult(
+        platform=Platform(platform_name, platform_name),
+        title="platform logo",
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    logo_uri = (
+        renderer_module.Renderer._RESOURCES_DIR / "logos" / logo_name
+    ).resolve().as_uri()
+    assert context["card"]["platform"]["logo_uri"] == logo_uri
+
+    html = renderer.render_html(result, context)
+    assert logo_uri in html
+    assert 'class="card-badges"' in html
+    assert 'class="card-badge__platform"' in html
+
+
+@pytest.mark.parametrize("template", ["default", "compact", "apple"])
+def test_douyin_motion_photo_renders_badge_and_save_hint(
+    renderer_module, tmp_path: Path, template: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="motion photo",
+        extra={"has_motion_photo": True},
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    card = context["card"]
+    livep_uri = (renderer_module.Renderer._RESOURCES_DIR / "livep.png").resolve().as_uri()
+    assert card["has_live_photo"] is True
+    assert card["live_photo_uri"] == livep_uri
+    assert card["live_photo_hint"] == renderer_module.Renderer._LIVE_PHOTO_HINT
+
+    html = renderer.render_html(result, context)
+    assert livep_uri in html
+    assert 'class="card-badge__live"' in html
+    assert renderer_module.Renderer._LIVE_PHOTO_HINT in html
+
+
+def test_live_photo_badge_is_limited_to_douyin(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    result = ParseResult(
+        platform=Platform("xhs", "小红书"),
+        extra={"has_motion_photo": True},
+    )
+
+    card = asyncio.run(renderer._result_context(result))["card"]
+    assert card["has_live_photo"] is False
+    assert card["live_photo_uri"] is None
+    assert card["live_photo_hint"] is None
+
+
 class _FakePage:
     def __init__(self):
         self.goto_calls: list[tuple[str, dict]] = []
@@ -266,6 +341,38 @@ def test_video_with_failed_cover_uses_error_placeholder(
 
     context = asyncio.run(make_context())
     assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
+
+
+def test_motion_photo_with_failed_static_cover_uses_error_placeholder(
+    renderer_module, tmp_path: Path, monkeypatch
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    error_cover = tmp_path / "error.png"
+    error_cover.write_bytes(b"error")
+    monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
+
+    async def make_context():
+        async def failed_cover_download():
+            raise DownloadException("HTTP 403 Forbidden")
+
+        result = ParseResult(
+            platform=Platform("douyin", "Douyin"),
+            title="motion photo static cover failure",
+            contents=[
+                ImageContent(
+                    asyncio.create_task(failed_cover_download()),
+                    card_error_placeholder=True,
+                )
+            ],
+        )
+        return await renderer._result_context(result)
+
+    context = asyncio.run(make_context())
+    content = context["card"]["contents"][0]
+    assert content["kind"] == "image"
+    assert content["uri"] == error_cover.resolve().as_uri()
 
 
 @pytest.mark.parametrize("template", ["default", "apple"])

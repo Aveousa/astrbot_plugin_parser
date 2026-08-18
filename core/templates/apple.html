@@ -32,6 +32,7 @@
     }
 
     .card {
+      position: relative;
       width: 712px;
       padding-bottom: 22px;
       overflow: hidden;
@@ -46,7 +47,33 @@
       align-items: center;
       gap: 13px;
       min-height: 80px;
-      padding: 18px 22px 16px;
+      padding: 18px 104px 16px 22px;
+    }
+
+    .card-badges {
+      position: absolute;
+      top: 18px;
+      right: 22px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 24px;
+    }
+
+    .card-badge__live {
+      display: block;
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+      opacity: .76;
+    }
+
+    .card-badge__platform {
+      display: block;
+      width: 48px;
+      height: 24px;
+      object-fit: contain;
+      object-position: center;
     }
 
     .avatar {
@@ -274,6 +301,16 @@
       line-height: 1.45;
     }
 
+    .live-photo-hint {
+      margin: 16px 22px 0;
+      padding-top: 12px;
+      overflow-wrap: anywhere;
+      color: #6e6e73;
+      border-top: 1px solid #e8e8ed;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .repost {
       margin: 18px 22px 0;
       padding: 14px 15px;
@@ -346,6 +383,12 @@
 {% set video_description = card.text[:video_description_limit] if is_video_cover and card.text else '' %}
 {% set video_description_truncated = is_video_cover and card.text and card.text|length > video_description_limit %}
 <main class="card" data-card-root>
+  {% if platform.logo_uri or card.live_photo_uri %}
+  <div class="card-badges">
+    {% if card.live_photo_uri %}<img class="card-badge__live" src="{{ card.live_photo_uri }}" alt="实况图">{% endif %}
+    {% if platform.logo_uri %}<img class="card-badge__platform" src="{{ platform.logo_uri }}" alt="{{ platform.display_name }}">{% endif %}
+  </div>
+  {% endif %}
   <header class="card-header">
     {% if author and author.avatar_uri %}
       <img class="avatar" src="{{ author.avatar_uri }}" alt="">
@@ -420,6 +463,7 @@
     {% if card.repost.text %}<div class="repost__text">{{ card.repost.text|emoji }}</div>{% endif %}
   </section>
   {% endif %}
+  {% if card.live_photo_hint %}<div class="live-photo-hint">{{ card.live_photo_hint }}</div>{% endif %}
 </main>
 </body>
 </html>

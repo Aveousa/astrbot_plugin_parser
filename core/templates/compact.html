@@ -10,8 +10,12 @@
     @page { size: 680px 2000px; margin: 0; }
     body { margin: 0; width: 680px; color: #252a31;
            font-family: "Douyin Sans", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 15px; line-height: 1.45; }
-    .card { box-sizing: border-box; width: 680px; padding: 18px 22px; }
-    .head { color: #64748b; font-size: 13px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+    .card { position: relative; box-sizing: border-box; width: 680px; padding: 18px 22px; }
+    .head { color: #64748b; font-size: 13px; border-bottom: 1px solid #e5e7eb; padding: 0 88px 8px 0; }
+    .card-badges { position: absolute; top: 18px; right: 22px; display: flex; align-items: center;
+                    gap: 7px; height: 24px; }
+    .card-badge__live { display: block; width: 24px; height: 24px; object-fit: contain; border-radius: 0; opacity: .76; }
+    .card-badge__platform { display: block; width: 48px; height: 24px; object-fit: contain; object-position: center; border-radius: 0; }
     h1 { font-size: 22px; margin: 10px 0 4px; }
     .text { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; }
     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
@@ -21,12 +25,20 @@
     .stat__icon { width: 14px; height: 14px; object-fit: contain; opacity: .62; flex: 0 0 auto; }
     .stat__fallback { font-size: 14px; line-height: 1; }
     .url { color: #64748b; font-size: 11px; overflow-wrap: anywhere; margin-top: 5px; }
+    .live-photo-hint { margin-top: 13px; padding-top: 10px; color: #64748b; border-top: 1px solid #e5e7eb;
+                        font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
     .emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
     .emoji-image { display: inline-block; width: 1.1em; height: 1.1em; object-fit: contain; vertical-align: -0.18em; }
   </style>
 </head>
 <body>
 <main class="card" data-card-root>
+  {% if platform.logo_uri or card.live_photo_uri %}
+  <div class="card-badges">
+    {% if card.live_photo_uri %}<img class="card-badge__live" src="{{ card.live_photo_uri }}" alt="实况图">{% endif %}
+    {% if platform.logo_uri %}<img class="card-badge__platform" src="{{ platform.logo_uri }}" alt="{{ platform.display_name }}">{% endif %}
+  </div>
+  {% endif %}
   <div class="head">{{ platform.display_name|emoji }}{% if author %} · {{ author.name|emoji }}{% endif %}{% if card.datetime %} · {{ card.datetime }}{% endif %}</div>
   {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
   {% if card.text %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
@@ -34,6 +46,7 @@
   {% if visual %}<div class="grid">{% for item in visual %}<img src="{{ item.uri }}" alt="{{ item.alt or '' }}">{% endfor %}</div>{% endif %}
   {% if card.stat_items %}<div class="stats">{% for item in card.stat_items %}<span class="stat" aria-label="{{ item.label }} {{ item.value|format_count }}">{% if item.icon_uri %}<img class="stat__icon" src="{{ item.icon_uri }}" alt="{{ item.label }}">{% else %}<span class="stat__fallback" aria-hidden="true">{{ item.icon }}</span>{% endif %}<strong>{{ item.value|format_count }}</strong></span>{% if not loop.last %}<span aria-hidden="true">·</span>{% endif %}{% endfor %}</div>{% endif %}
   {% if card.url %}<div class="url">{{ card.url }}</div>{% endif %}
+  {% if card.live_photo_hint %}<div class="live-photo-hint">{{ card.live_photo_hint }}</div>{% endif %}
 </main>
 </body>
 </html>

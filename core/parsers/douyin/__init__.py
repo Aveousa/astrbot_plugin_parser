@@ -561,7 +561,7 @@ class DouyinParser(BaseParser):
                     ),
                     name=f"douyin_motion_photo_{index}",
                 )
-                contents.append(ImageContent(task))
+                contents.append(ImageContent(task, card_error_placeholder=True))
                 continue
 
             if image.clip_type == 5:
@@ -574,7 +574,12 @@ class DouyinParser(BaseParser):
                 headers=headers,
                 proxy=self.proxy,
             )
-            contents.append(ImageContent(task))
+            contents.append(
+                ImageContent(
+                    task,
+                    card_error_placeholder=image.clip_type == 5,
+                )
+            )
         return contents
 
     @staticmethod

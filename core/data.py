@@ -172,7 +172,7 @@ class VideoContent(MediaContent):
 class ImageContent(MediaContent):
     """图片内容"""
 
-    pass
+    card_error_placeholder: bool = False
 
 
 @dataclass(repr=False, slots=True, init=False)

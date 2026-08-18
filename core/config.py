@@ -230,7 +230,7 @@ class PluginConfig(ConfigNode):
         # 字段返回 None 进而改变旧的发送策略。
         defaults = {
             "card_enabled": True,
-            "card_template": "default",
+            "card_template": "apple",
             "card_custom_template": "",
             "emoji_style": "APPLE",
         }
