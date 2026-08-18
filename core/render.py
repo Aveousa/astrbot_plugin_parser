@@ -451,17 +451,23 @@ class Renderer:
 
     @staticmethod
     async def _media_path(content: MediaContent) -> Path | None:
-        """返回卡片可直接展示的本地图片，并为无封面视频提供占位图。"""
-        try:
-            if isinstance(content, VideoContent):
+        """返回卡片可直接展示的本地图片，并为失效视频封面提供占位图。"""
+        if isinstance(content, VideoContent):
+            try:
                 cover = await content.get_cover_path()
-                if cover and cover.is_file():
-                    return cover
-                for filename in Renderer._VIDEO_ERROR_COVER_NAMES:
-                    fallback = Renderer._RESOURCES_DIR / filename
-                    if fallback.is_file():
-                        return fallback
-                return None
+            except (DownloadException, OSError, RuntimeError) as exc:
+                logger.debug(f"视频封面获取失败，使用默认预览图: {exc}")
+                cover = None
+
+            if cover and cover.is_file():
+                return cover
+            for filename in Renderer._VIDEO_ERROR_COVER_NAMES:
+                fallback = Renderer._RESOURCES_DIR / filename
+                if fallback.is_file():
+                    return fallback
+            return None
+
+        try:
             if isinstance(content, (ImageContent, GraphicsContent)):
                 path = await content.get_path()
                 return path if path.is_file() else None

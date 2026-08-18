@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.data import DynamicContent, ImageContent, ParseResult, Platform, VideoContent
+from core.exception import DownloadException
 
 
 @pytest.fixture
@@ -202,6 +203,34 @@ def test_video_without_cover_uses_error_placeholder(renderer_module, tmp_path: P
     )
 
     context = asyncio.run(renderer._result_context(result))
+    assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
+
+
+def test_video_with_failed_cover_uses_error_placeholder(
+    renderer_module, tmp_path: Path, monkeypatch
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    error_cover = tmp_path / "error.png"
+    error_cover.write_bytes(b"error")
+    monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"video")
+
+    async def make_context():
+        async def failed_cover_download():
+            raise DownloadException("HTTP 403 Forbidden")
+
+        result = ParseResult(
+            platform=Platform("douyin", "抖音"),
+            title="封面下载失败的视频",
+            contents=[VideoContent(video, cover=asyncio.create_task(failed_cover_download()))],
+        )
+        return await renderer._result_context(result)
+
+    context = asyncio.run(make_context())
     assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
 
 
