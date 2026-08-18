@@ -7,7 +7,7 @@ from astrbot.api import logger
 from astrbot.api.event import filter
 from astrbot.api.star import Context, Star
 from astrbot.core import AstrBotConfig
-from astrbot.core.message.components import At, Image, Json, Plain, Reply
+from astrbot.core.message.components import At, Image, Json, Plain
 from astrbot.core.platform.astr_message_event import AstrMessageEvent
 from astrbot.core.platform.message_type import MessageType
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
@@ -164,18 +164,6 @@ class ParserPlugin(Star):
             if parsed_url:
                 text = parsed_url
                 break
-
-        # 引用解析
-        reply_seg = next((seg for seg in chain if isinstance(seg, Reply)), None)
-        if reply_seg and reply_seg.chain:
-            reply_texts = []
-            for seg in reply_seg.chain:
-                if isinstance(seg, Plain):
-                    reply_texts.append(seg.text)
-                elif isinstance(seg, Json):
-                    reply_texts.append(extract_json_url(seg.data))
-            if reply_texts:
-                text = "".join(reply_texts)
 
         if not text:
             return

@@ -82,7 +82,14 @@ def test_builtin_templates_use_bundled_douyin_sans(
     config = _Config(tmp_path)
     config.card_template = template
     renderer = renderer_module.Renderer(config)
-    result = ParseResult(platform=Platform("test", "Test"), title="字体测试")
+    result = ParseResult(
+        platform=Platform("test", "Test"),
+        title="字体测试",
+        like_count=1234,
+        comment_count=56,
+        favorite_count=78,
+        share_count=90,
+    )
 
     font_path = renderer_module.Renderer._CARD_FONT_PATH
     assert font_path.name == "douyin_sans.otf"
@@ -92,6 +99,9 @@ def test_builtin_templates_use_bundled_douyin_sans(
     assert f'url("{font_path.resolve().as_uri()}")' in html
     assert 'font-family: "Douyin Sans"' in html
     assert "HYSongYunLangHeiW-1" not in html
+    assert 'data-card-root' in html
+    for icon_name in ("like.png", "comment.png", "favorites.png", "share.png"):
+        assert (font_path.parent / icon_name).resolve().as_uri() in html
 
 
 class _FakePage:
@@ -113,6 +123,30 @@ class _FakePage:
 
     async def close(self):
         self.closed = True
+
+
+class _FakeElement:
+    def __init__(self, page: "_FakeCardPage"):
+        self.page = page
+        self.first = self
+
+    async def count(self):
+        return 1
+
+    async def screenshot(self, **kwargs):
+        self.page.element_screenshot_calls.append(kwargs)
+        Path(kwargs["path"]).write_bytes(b"element-png")
+
+
+class _FakeCardPage(_FakePage):
+    def __init__(self):
+        super().__init__()
+        self.element_screenshot_calls: list[dict] = []
+        self.locator_calls: list[str] = []
+
+    def locator(self, selector: str):
+        self.locator_calls.append(selector)
+        return _FakeElement(self)
 
 
 class _FakeContext:
@@ -424,6 +458,31 @@ def test_playwright_screenshot_uses_headless_shell_and_removes_temp_html(
     assert fake.browser.context.closed is True
     assert fake.browser.closed is True
     assert fake.stopped is True
+
+
+def test_playwright_screenshot_crops_marked_card_root(
+    renderer_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    fake = _FakePlaywright()
+    fake.browser.context.page = _FakeCardPage()
+    manager = _FakePlaywrightManager(fake)
+    monkeypatch.setattr(renderer_module, "_PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(renderer_module, "async_playwright", manager)
+
+    target = config.cache_dir / "card-root.png"
+    assert asyncio.run(
+        renderer._render_playwright_png(
+            '<main data-card-root>card</main>', target,
+            base_url=str(config.template_dir),
+        )
+    )
+    page = fake.browser.context.page
+    assert page.locator_calls == ["[data-card-root]"]
+    assert page.element_screenshot_calls[0]["type"] == "png"
+    assert "full_page" not in page.element_screenshot_calls[0]
+    assert target.read_bytes() == b"element-png"
 
 
 def test_base_url_injection_preserves_existing_base(renderer_module, tmp_path: Path):

@@ -60,7 +60,7 @@ python -m pip install astrbot
 
 建议先安装插件依赖，再安装 AstrBot 主程序；插件运行时通过 AstrBot 提供的消息组件和配置 API 接入。
 
-`playwright` 负责驱动 Chrome Headless Shell 对渲染后的 HTML 做全页 PNG 截图。安装 Python 依赖后还需安装浏览器二进制：
+`playwright` 负责驱动 Chrome Headless Shell 将渲染后的 HTML 裁剪为卡片 PNG。安装 Python 依赖后还需安装浏览器二进制：
 
 ```bash
 python -m playwright install chromium-headless-shell
@@ -80,12 +80,13 @@ python -m playwright install chromium-headless-shell
 
 ## 流程
 
-1. 从文本、JSON 卡片或引用消息提取链接。
+1. 从当前消息的文本或 JSON 卡片提取链接。
 2. 完成会话过滤、仲裁和防抖。
 3. 由四个保留解析器之一生成 `ParseResult`。
 4. `MessageSender` 根据媒体类型、合并阈值和全局卡片开关构建发送计划。
-5. 需要卡片时，`Renderer` 用 Jinja2 生成 HTML，交由 Playwright 的 Chrome Headless Shell 全页截图为 PNG；失败则记录日志并跳过卡片，随后仍按原有策略发送媒体。
+5. 需要卡片时，`Renderer` 用 Jinja2 生成 HTML，交由 Playwright 的 Chrome Headless Shell 裁剪卡片根节点为 PNG；失败则记录日志并跳过卡片，随后仍按原有策略发送媒体。
 
 ## 致谢
 
-本项目核心代码来自 [nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)。
+本项目核心代码来自 [nonebot-plugin-parser](https://github.com/fllesser/nonebot-plugin-parser)与[astrbot_plugin_parser](https://github.com/Zhalslar/astrbot_plugin_parser)。
+感谢[karin-plugin-kkk](https://github.com/ikenxuan/karin-plugin-kkk)项目提供的抖音实况图（组）的实现方式！

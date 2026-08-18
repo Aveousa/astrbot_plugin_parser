@@ -242,14 +242,22 @@
     .stat {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       white-space: nowrap;
     }
 
     .stat__icon {
+      width: 15px;
+      height: 15px;
+      object-fit: contain;
+      opacity: .58;
+      flex: 0 0 auto;
+    }
+
+    .stat__fallback {
       color: #86868b;
-      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
-      font-size: 12px;
+      font-size: 14px;
+      line-height: 1;
     }
 
     .stat strong {
@@ -337,7 +345,7 @@
 {% set video_description_limit = 120 %}
 {% set video_description = card.text[:video_description_limit] if is_video_cover and card.text else '' %}
 {% set video_description_truncated = is_video_cover and card.text and card.text|length > video_description_limit %}
-<main class="card">
+<main class="card" data-card-root>
   <header class="card-header">
     {% if author and author.avatar_uri %}
       <img class="avatar" src="{{ author.avatar_uri }}" alt="">
@@ -398,7 +406,7 @@
   {% if card.stat_items %}
   <div class="meta">
     {% for item in card.stat_items %}
-      <span class="stat"><span class="stat__icon">{{ item.icon }}</span><span>{{ item.label }}</span><strong>{{ item.value|format_count }}</strong></span>
+      <span class="stat" aria-label="{{ item.label }} {{ item.value|format_count }}">{% if item.icon_uri %}<img class="stat__icon" src="{{ item.icon_uri }}" alt="{{ item.label }}">{% else %}<span class="stat__fallback" aria-hidden="true">{{ item.icon }}</span>{% endif %}<strong>{{ item.value|format_count }}</strong></span>
     {% endfor %}
   </div>
   {% endif %}

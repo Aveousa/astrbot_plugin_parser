@@ -36,6 +36,9 @@
                                -webkit-line-clamp: 3; }
     .stats { display: flex; flex-wrap: wrap; gap: 18px; color: #69717d; font-size: 14px;
              padding-top: 14px; margin-top: 14px; border-top: 1px solid #ececf0; }
+    .stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .stat__icon { width: 15px; height: 15px; object-fit: contain; opacity: .62; flex: 0 0 auto; }
+    .stat__fallback { color: #69717d; font-size: 16px; line-height: 1; }
     .stat strong { color: #343a40; font-weight: 600; }
     .url { color: #5978a7; font-size: 12px; overflow-wrap: anywhere; margin-top: 12px; }
     .repost { margin-top: 18px; padding: 14px 16px; border-radius: 8px; background: #f7f8fa;
@@ -45,7 +48,7 @@
   </style>
 </head>
 <body>
-<main class="card">
+<main class="card" data-card-root>
   <header class="header">
     {% if author and author.avatar_uri %}<img class="avatar" src="{{ author.avatar_uri }}" alt="">{% else %}<span class="avatar"></span>{% endif %}
     <div>
@@ -80,7 +83,7 @@
   {% if card.extra_info %}<div class="extra">{{ card.extra_info|emoji }}</div>{% endif %}
   {% if card.stat_items %}
   <div class="stats">
-    {% for item in card.stat_items %}<span class="stat">{{ item.icon }} {{ item.label }} <strong>{{ item.value|format_count }}</strong></span>{% endfor %}
+    {% for item in card.stat_items %}<span class="stat" aria-label="{{ item.label }} {{ item.value|format_count }}">{% if item.icon_uri %}<img class="stat__icon" src="{{ item.icon_uri }}" alt="{{ item.label }}">{% else %}<span class="stat__fallback" aria-hidden="true">{{ item.icon }}</span>{% endif %}<strong>{{ item.value|format_count }}</strong></span>{% endfor %}
   </div>
   {% endif %}
   {% if card.url %}<div class="url">{{ card.url }}</div>{% endif %}

@@ -92,11 +92,17 @@ class Renderer:
     _TEMPLATES_DIR: ClassVar[Path] = Path(__file__).with_name("templates")
     _RESOURCES_DIR: ClassVar[Path] = Path(__file__).with_name("resources")
     _CARD_FONT_PATH: ClassVar[Path] = _RESOURCES_DIR / "douyin_sans.otf"
+    _STAT_ICON_NAMES: ClassVar[dict[str, str]] = {
+        "likes": "like.png",
+        "comments": "comment.png",
+        "favorites": "favorites.png",
+        "shares": "share.png",
+    }
     _VIDEO_ERROR_COVER_NAMES: ClassVar[tuple[str, ...]] = ("err.png", "error.png")
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
-    # ``full_page=True`` captures the whole document. A short viewport avoids
-    # padding compact cards to a large fixed canvas while preserving their width.
+    # A short viewport keeps the browser from padding compact cards to a large
+    # fixed canvas; built-in templates are cropped to their card root on export.
     _BROWSER_VIEWPORT_HEIGHT: ClassVar[int] = 100
     _BROWSER_START_TIMEOUT_MS: ClassVar[int] = 30_000
     _PAGE_LOAD_TIMEOUT_MS: ClassVar[int] = 30_000
@@ -531,10 +537,19 @@ class Renderer:
         contents = [await self._content_context(content) for content in result.contents]
         stats = result.engagement.as_dict()
         stat_items = [
-            {"key": "likes", "label": "点赞", "icon": "♡", "value": stats["likes"]},
-            {"key": "comments", "label": "评论", "icon": "◌", "value": stats["comments"]},
-            {"key": "favorites", "label": "收藏", "icon": "☆", "value": stats["favorites"]},
-            {"key": "shares", "label": "转发", "icon": "↗", "value": stats["shares"]},
+            {
+                "key": key,
+                "label": label,
+                "icon": fallback_icon,
+                "icon_uri": self._file_uri(self._RESOURCES_DIR / icon_name),
+                "value": stats[key],
+            }
+            for key, label, fallback_icon, icon_name in (
+                ("likes", "点赞", "♡", self._STAT_ICON_NAMES["likes"]),
+                ("comments", "评论", "◌", self._STAT_ICON_NAMES["comments"]),
+                ("favorites", "收藏", "☆", self._STAT_ICON_NAMES["favorites"]),
+                ("shares", "转发", "↗", self._STAT_ICON_NAMES["shares"]),
+            )
         ]
         card: dict[str, Any] = {
             "platform": {"name": result.platform.name, "display_name": result.platform.display_name},
@@ -669,11 +684,32 @@ class Renderer:
                     # 资源超时不阻止截图；浏览器仍会按 HTML 的实际状态输出。
                     self._log_warning(f"等待卡片{label}资源超时，继续截图: {exc}")
 
-            await page.screenshot(
-                path=str(target.resolve()),
-                type="png",
-                full_page=True,
-            )
+            # Built-in templates mark the visual card root so exported PNGs do
+            # not retain the page-level padding/background around the card.
+            locator_factory = getattr(page, "locator", None)
+            root = locator_factory("[data-card-root]") if callable(locator_factory) else None
+            if root is not None and await root.count():
+                await root.first.screenshot(
+                    path=str(target.resolve()),
+                    type="png",
+                )
+            else:
+                # Custom templates may not add the marker; crop to the body so
+                # the browser viewport itself never becomes an exported border.
+                body = locator_factory("body") if callable(locator_factory) else None
+                if body is not None and await body.count():
+                    await body.first.screenshot(
+                        path=str(target.resolve()),
+                        type="png",
+                    )
+                else:
+                    # Keep compatibility with lightweight test/fallback page
+                    # implementations that expose only page.screenshot().
+                    await page.screenshot(
+                        path=str(target.resolve()),
+                        type="png",
+                        full_page=True,
+                    )
             return target.exists() and target.stat().st_size > 0
         except Exception as exc:
             self._log_exception(f"Playwright PNG 卡片渲染失败: {exc}")
