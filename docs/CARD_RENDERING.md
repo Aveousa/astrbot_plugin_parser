@@ -91,6 +91,8 @@ Jinja2 自动转义已启用。内置可用过滤器：
 
 渲染器使用 Playwright 驱动 Chrome Headless Shell 对 Jinja2 生成的 HTML 截取卡片根节点 PNG，不再通过 PDF、PyMuPDF、Pillow 或其他卡片绘图库转换。内置模板通过 `data-card-root` 标记裁掉卡片外留白；未提供标记的自定义模板回退截取 `body`。浏览器进程在插件生命周期内复用，避免为每张卡片重复启动。模板不存在、浏览器不可用或截图失败时，渲染器会记录异常并返回 `None`；发送器因此跳过卡片，但继续原媒体发送流程。
 
+图片、图文、视频与动态媒体没有可用预览图时，卡片统一使用 `core/resources/error_preview.png` 作为预览占位图。
+
 三个内置模板统一通过 `@font-face` 加载 `core/resources/douyin_sans.otf`，字体族名为 `Douyin Sans`；统计栏使用 `like.png`、`comment.png`、`favorites.png`、`share.png` 四个资源图标。平台 Logo 通过 `card.platform.logo_uri` 提供；检测到抖音实况图时，`card.live_photo_uri` 和 `card.live_photo_hint` 会提供右上角实况标识与底部提示。自定义模板也可以直接使用这些 URI 和 `card_font_uri`。
 
 ### 运行前提

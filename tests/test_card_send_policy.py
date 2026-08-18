@@ -10,12 +10,15 @@ from types import SimpleNamespace
 import pytest
 
 from core.data import (
+    DynamicContent,
+    GraphicsContent,
     ImageContent,
     ParseResult,
     Platform,
     SendGroup,
     VideoContent,
 )
+from core.exception import DownloadException
 
 
 @pytest.fixture
@@ -297,3 +300,37 @@ def test_failed_card_keeps_explicit_gallery_forwarding(sender_module):
     assert len(event.sent) == 1
     assert event.sent[0][0].__class__.__name__ == "Nodes"
     assert len(event.sent[0][0].nodes) == 2
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    [ImageContent, GraphicsContent, VideoContent, DynamicContent],
+)
+def test_failed_visual_media_uses_local_error_placeholder(
+    sender_module,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    content_type,
+):
+    """图片类及视频类下载失败时应发送本地图片，而非文字提示。"""
+    error_media = tmp_path / "error_media.png"
+    error_media.write_bytes(b"placeholder")
+    monkeypatch.setattr(sender_module.MessageSender, "_ERROR_MEDIA_PATH", error_media)
+
+    async def build_segments():
+        async def failed_download():
+            raise DownloadException("network failure")
+
+        content = content_type(asyncio.create_task(failed_download()))
+        result = ParseResult(
+            platform=Platform("douyin", "抖音"),
+            contents=[content],
+        )
+        sender = sender_module.MessageSender(_card_config(), _Renderer())
+        return await sender._build_segments(result, sender._build_send_plan(result))
+
+    segments = asyncio.run(build_segments())
+
+    assert len(segments) == 1
+    assert segments[0].__class__.__name__ == "Image"
+    assert segments[0].path == str(error_media)

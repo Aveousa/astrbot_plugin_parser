@@ -112,7 +112,7 @@ class Renderer:
     _LIVE_PHOTO_HINT: ClassVar[str] = (
         "（对于除Apple、vivo机型以外的手机）可尝试点击“查看原图”后保存获取实况图~"
     )
-    _ERROR_PREVIEW_IMAGE_NAMES: ClassVar[tuple[str, ...]] = ("error.png", "err.png")
+    _ERROR_PREVIEW_IMAGE_NAMES: ClassVar[tuple[str, ...]] = ("error_preview.png",)
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
     # A short viewport keeps the browser from padding compact cards to a large
@@ -479,7 +479,7 @@ class Renderer:
 
     @classmethod
     async def _media_path(cls, content: MediaContent) -> Path | None:
-        """返回卡片可直接展示的本地图片，并为失效视频封面提供占位图。"""
+        """返回卡片可展示的本地预览图，视觉媒体失效时使用默认占位图。"""
         if isinstance(content, VideoContent):
             try:
                 cover = await content.get_cover_path()
@@ -496,9 +496,7 @@ class Renderer:
                 path = await content.get_path()
                 if path.is_file():
                     return path
-                if isinstance(content, ImageContent) and content.card_error_placeholder:
-                    return cls._error_preview_path()
-                return None
+                return cls._error_preview_path()
             if isinstance(content, DynamicContent):
                 # 动态内容若已有 GIF/图片副本，优先用它作为静态卡片封面。
                 if content.gif_path and content.gif_path.is_file():
@@ -515,9 +513,11 @@ class Renderer:
                 }:
                     return path
         except (DownloadException, OSError, RuntimeError):
-            if isinstance(content, ImageContent) and content.card_error_placeholder:
+            if isinstance(content, (ImageContent, GraphicsContent, DynamicContent)):
                 return cls._error_preview_path()
             return None
+        if isinstance(content, DynamicContent):
+            return cls._error_preview_path()
         return None
 
     async def _content_context(self, content: MediaContent) -> dict[str, Any]:

@@ -52,6 +52,8 @@ class MessageSender:
     - 只负责“怎么发”
     """
 
+    _ERROR_MEDIA_PATH = Path(__file__).with_name("resources") / "error_media.png"
+
     def __init__(self, config: PluginConfig, renderer: Renderer):
         self.cfg = config
         self.renderer = renderer
@@ -87,6 +89,33 @@ class MessageSender:
     @staticmethod
     def _image_from_path(path: Path) -> Image:
         return Image.fromFileSystem(str(path))
+
+    def _append_download_failure_fallback(
+        self,
+        segments: list[BaseMessageComponent],
+        content: object,
+    ) -> None:
+        """为下载失败的媒体追加与类型相符的可发送兜底内容。
+
+        图片、图文、视频和动态媒体都改为发送本地静态占位图，避免把
+        ``此项媒体下载失败`` 作为单独文字消息发出。音频和文件没有合适的
+        图片替代形式，仍沿用原有文字提示。关闭失败提示开关时，保持原有的
+        静默跳过行为。
+        """
+        if not getattr(self.cfg, "show_download_fail_tip", True):
+            return
+
+        if isinstance(
+            content,
+            (ImageContent, GraphicsContent, VideoContent, DynamicContent),
+        ):
+            fallback_path = self._ERROR_MEDIA_PATH
+            if fallback_path.is_file():
+                segments.append(self._image_from_path(fallback_path))
+                return
+            logger.error(f"媒体下载失败占位图不存在，回退文字提示: {fallback_path}")
+
+        segments.append(Plain("此项媒体下载失败"))
 
     @staticmethod
     def _video_from_path(path: Path) -> Video:
@@ -190,8 +219,7 @@ class MessageSender:
             except (DownloadLimitException, ZeroSizeException):
                 continue
             except DownloadException:
-                if self.cfg.show_download_fail_tip:
-                    segs.append(Plain("此项媒体下载失败"))
+                self._append_download_failure_fallback(segs, cont)
                 continue
 
             match cont:
@@ -219,8 +247,7 @@ class MessageSender:
                     segs.append(Plain(message))
                 continue
             except DownloadException:
-                if self.cfg.show_download_fail_tip:
-                    segs.append(Plain("此项媒体下载失败"))
+                self._append_download_failure_fallback(segs, cont)
                 continue
 
             match cont:

@@ -87,7 +87,8 @@
     "default": "APPLE"
   },
   "show_download_fail_tip": {
-    "description": "提示媒体下载失败",
+    "description": "下载失败时发送占位提示",
+    "hint": "图片和视频会发送 error_media.png；关闭后不发送下载失败提示",
     "type": "bool",
     "default": true
   },

@@ -10,7 +10,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.data import DynamicContent, ImageContent, ParseResult, Platform, VideoContent
+from core.data import (
+    DynamicContent,
+    GraphicsContent,
+    ImageContent,
+    ParseResult,
+    Platform,
+    VideoContent,
+)
 from core.exception import DownloadException
 
 
@@ -299,7 +306,7 @@ def test_video_without_cover_uses_error_placeholder(renderer_module, tmp_path: P
     config = _Config(tmp_path)
     renderer = renderer_module.Renderer(config)
     renderer._emoji_source = None
-    error_cover = tmp_path / "err.png"
+    error_cover = tmp_path / "error_preview.png"
     error_cover.write_bytes(b"error")
     monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
 
@@ -321,7 +328,7 @@ def test_video_with_failed_cover_uses_error_placeholder(
     config = _Config(tmp_path)
     renderer = renderer_module.Renderer(config)
     renderer._emoji_source = None
-    error_cover = tmp_path / "error.png"
+    error_cover = tmp_path / "error_preview.png"
     error_cover.write_bytes(b"error")
     monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
 
@@ -349,7 +356,7 @@ def test_motion_photo_with_failed_static_cover_uses_error_placeholder(
     config = _Config(tmp_path)
     renderer = renderer_module.Renderer(config)
     renderer._emoji_source = None
-    error_cover = tmp_path / "error.png"
+    error_cover = tmp_path / "error_preview.png"
     error_cover.write_bytes(b"error")
     monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
 
@@ -402,7 +409,7 @@ def test_placeholder_description_does_not_render_an_intro_box(
     assert "简介：-" not in html
 
 
-def test_image_gallery_ignores_failed_items_and_keeps_completed_image(
+def test_image_gallery_uses_error_placeholder_for_failed_items_and_keeps_completed_image(
     renderer_module, tmp_path: Path
 ):
     config = _Config(tmp_path)
@@ -418,8 +425,36 @@ def test_image_gallery_ignores_failed_items_and_keeps_completed_image(
 
     context = asyncio.run(renderer._result_context(result))
     contents = context["card"]["contents"]
-    assert contents[0]["uri"] is None
+    error_preview = renderer_module.Renderer._RESOURCES_DIR / "error_preview.png"
+    assert contents[0]["uri"] == error_preview.resolve().as_uri()
     assert contents[1]["uri"] == completed.resolve().as_uri()
+
+
+def test_graphics_and_dynamic_media_without_preview_use_error_placeholder(
+    renderer_module, tmp_path: Path
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    source_video = tmp_path / "dynamic.mp4"
+    source_video.write_bytes(b"video")
+    result = ParseResult(
+        platform=Platform("xhs", "小红书"),
+        contents=[
+            GraphicsContent(tmp_path / "missing-graphics.png", text="图文内容"),
+            DynamicContent(source_video),
+        ],
+    )
+
+    contents = asyncio.run(renderer._result_context(result))["card"]["contents"]
+    error_preview = (
+        renderer_module.Renderer._RESOURCES_DIR / "error_preview.png"
+    ).resolve().as_uri()
+
+    assert [content["uri"] for content in contents] == [
+        error_preview,
+        error_preview,
+    ]
 
 
 def test_builtin_template_only_renders_available_statistics(renderer_module, tmp_path: Path):
