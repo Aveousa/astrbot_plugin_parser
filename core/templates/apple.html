@@ -255,41 +255,63 @@
     }
 
     .meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      margin: 18px 22px 0;
-      padding: 15px 0 0;
-      color: #6e6e73;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      column-gap: 18px;
+      margin: 21px 24px 0;
+      padding: 18px 0 0;
       border-top: 1px solid #e8e8ed;
-      font-size: 13px;
-      line-height: 1.35;
     }
 
     .stat {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
       white-space: nowrap;
     }
 
+    .stat__head {
+      display: inline-flex;
+      max-width: 100%;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      color: #6e6e73;
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.12;
+    }
+
     .stat__icon {
-      width: 15px;
-      height: 15px;
+      width: 20px;
+      height: 20px;
       object-fit: contain;
-      opacity: .58;
+      opacity: .68;
       flex: 0 0 auto;
     }
 
     .stat__fallback {
       color: #86868b;
-      font-size: 14px;
+      font-size: 18px;
       line-height: 1;
     }
 
+    .stat__label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .stat strong {
-      color: #424245;
-      font-weight: 650;
+      max-width: 100%;
+      overflow: hidden;
+      color: #050509;
+      font-size: 34px;
+      font-weight: 780;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+      text-overflow: ellipsis;
       font-variant-numeric: tabular-nums;
     }
 
@@ -371,7 +393,7 @@
       .byline,
       .cover-caption,
       .extra,
-      .meta { color: #4d4d52; }
+      .stat__head { color: #4d4d52; }
     }
   </style>
 </head>
@@ -449,7 +471,10 @@
   {% if card.stat_items %}
   <div class="meta">
     {% for item in card.stat_items %}
-      <span class="stat" aria-label="{{ item.label }} {{ item.value|format_count }}">{% if item.icon_uri %}<img class="stat__icon" src="{{ item.icon_uri }}" alt="{{ item.label }}">{% else %}<span class="stat__fallback" aria-hidden="true">{{ item.icon }}</span>{% endif %}<strong>{{ item.value|format_count }}</strong></span>
+      <span class="stat" aria-label="{{ item.label }} {{ item.value|format_count }}">
+        <span class="stat__head">{% if item.icon_uri %}<img class="stat__icon" src="{{ item.icon_uri }}" alt="{{ item.label }}">{% else %}<span class="stat__fallback" aria-hidden="true">{{ item.icon }}</span>{% endif %}<span class="stat__label">{{ item.label }}</span></span>
+        <strong>{{ item.value|format_count }}</strong>
+      </span>
     {% endfor %}
   </div>
   {% endif %}
