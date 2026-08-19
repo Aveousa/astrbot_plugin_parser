@@ -1,3 +1,4 @@
+import re
 from asyncio import Task, TimeoutError, create_task, gather, sleep
 from collections.abc import Callable, Coroutine
 from functools import wraps
@@ -7,6 +8,7 @@ from typing import Any, ParamSpec, TypeVar
 import aiofiles
 from aiohttp import ClientError, ClientSession, ClientTimeout
 from tqdm.asyncio import tqdm
+from yarl import URL
 
 from astrbot.api import logger
 
@@ -21,6 +23,7 @@ from .utils import generate_file_name, merge_av, safe_unlink
 
 P = ParamSpec("P")
 T = TypeVar("T")
+_PERCENT_ENCODED_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 
 
 def auto_task(func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, Task[T]]:
@@ -51,6 +54,13 @@ class Downloader:
         """关闭网络客户端"""
         await self.client.close()
 
+    @staticmethod
+    def _request_url(url: str) -> str | URL:
+        """Preserve already-encoded signed media URLs before aiohttp sends them."""
+        if _PERCENT_ENCODED_RE.search(url):
+            return URL(url, encoded=True)
+        return url
+
     @auto_task
     async def streamd(
         self,
@@ -68,11 +78,12 @@ class Downloader:
         if file_path.exists():
             return file_path
         headers = headers or self.default_headers
+        request_url = self._request_url(url)
         retries = self.cfg.download_retry_times
         for attempt in range(retries + 1):
             try:
                 async with self.client.get(
-                    url, headers=headers, allow_redirects=True, proxy=proxy
+                    request_url, headers=headers, allow_redirects=True, proxy=proxy
                 ) as response:
                     if response.status >= 400:
                         raise ClientError(f"HTTP {response.status} {response.reason}")
