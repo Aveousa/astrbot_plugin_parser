@@ -1,5 +1,6 @@
 import re
 from asyncio import create_task, gather, to_thread
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from random import choice
@@ -38,6 +39,10 @@ class DouyinParser(BaseParser):
     # 平台信息
     platform: ClassVar[Platform] = Platform(name="douyin", display_name="抖音")
     PLAY_RATIOS: ClassVar[tuple[str, ...]] = ("1080p", "720p", "540p", "360p")
+    _MEDIA_ACCEPT_LANGUAGE: ClassVar[str] = "zh-CN,zh;q=0.9"
+    _IMAGE_ACCEPT: ClassVar[str] = (
+        "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+    )
     TTWID_REGISTER_URL: ClassVar[str] = (
         "https://ttwid.bytedance.com/ttwid/union/register/"
     )
@@ -283,6 +288,7 @@ class DouyinParser(BaseParser):
             duration = video_data.video.duration if video_data.video else 0
             logger.debug(f"[抖音] 检测到视频内容，时长: {duration}秒")
             video_headers = self._build_media_headers(url)
+            cover_headers = self._build_image_headers(url)
             video_url = None
             if play_token := video_data.play_token:
                 try:
@@ -298,7 +304,11 @@ class DouyinParser(BaseParser):
             if video_url:
                 contents.append(
                     self.create_video_content(
-                        video_url, cover_url, duration, headers=video_headers
+                        video_url,
+                        cover_url,
+                        duration,
+                        headers=video_headers,
+                        cover_headers=cover_headers,
                     )
                 )
 
@@ -514,10 +524,39 @@ class DouyinParser(BaseParser):
             f"https://aweme.snssdk.com/aweme/v1/play/?video_id={video_id}&ratio={ratio}"
         )
 
-    def _build_media_headers(self, referer: str) -> dict[str, str]:
-        headers = self.ios_headers.copy()
-        headers.pop("Cookie", None)
-        headers["Referer"] = referer
+    def _build_media_headers(
+        self,
+        referer: str,
+        *,
+        base_headers: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """构建抖音 CDN 媒体请求头。
+
+        CDN 资源属于跨域子站，不能复用页面会话的 Cookie；保留与页面一致的
+        User-Agent，并补齐作品页 Referer 和常见语言协商头。
+        """
+        headers = dict(self.ios_headers if base_headers is None else base_headers)
+        for key in tuple(headers):
+            if key.lower() in {"cookie", "accept", "accept-language", "referer"}:
+                headers.pop(key)
+        headers.update(
+            {
+                "Accept": "*/*",
+                "Accept-Language": self._MEDIA_ACCEPT_LANGUAGE,
+                "Referer": referer,
+            }
+        )
+        return headers
+
+    def _build_image_headers(
+        self,
+        referer: str,
+        *,
+        base_headers: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
+        """构建抖音封面/图片请求头，模拟页面加载图片时的 Accept 语义。"""
+        headers = self._build_media_headers(referer, base_headers=base_headers)
+        headers["Accept"] = self._IMAGE_ACCEPT
         return headers
 
     def _create_douyin_image_contents(
@@ -529,6 +568,7 @@ class DouyinParser(BaseParser):
     ) -> list[ImageContent]:
         """创建普通图片或已封装的抖音实况图下载任务。"""
         contents: list[ImageContent] = []
+        image_headers = self._build_image_headers(referer, base_headers=headers)
         clip_types = [image.clip_type for image in images]
         live_count = sum(clip_type == 5 for clip_type in clip_types)
         video_source_count = sum(
@@ -571,7 +611,7 @@ class DouyinParser(BaseParser):
 
             task = self.downloader.download_img(
                 image_url,
-                headers=headers,
+                headers=image_headers,
                 proxy=self.proxy,
             )
             contents.append(
@@ -644,13 +684,13 @@ class DouyinParser(BaseParser):
         image_task = self.downloader.download_img(
             image_url,
             img_name=f".motion_{cache_stem}_{work_id}_cover.jpg",
-            headers=headers,
+            headers=self._build_image_headers(referer, base_headers=headers),
             proxy=self.proxy,
         )
         video_task = self.downloader.download_video(
             video_url,
             video_name=f".motion_{cache_stem}_{work_id}_clip.mp4",
-            headers=self._build_media_headers(referer),
+            headers=self._build_media_headers(referer, base_headers=headers),
             proxy=self.proxy,
         )
         image_result, video_result = await gather(
@@ -805,7 +845,13 @@ class DouyinParser(BaseParser):
         if dynamic_urls := slides_data.dynamic_urls:
             logger.debug(f"[抖音] 检测到幻灯片动态效果，数量: {len(dynamic_urls)}")
             contents.extend(
-                self.create_dynamic_contents(dynamic_urls, headers=self.android_headers)
+                self.create_dynamic_contents(
+                    dynamic_urls,
+                    headers=self._build_media_headers(
+                        self._build_iesdouyin_url("slides", video_id),
+                        base_headers=self.android_headers,
+                    ),
+                )
             )
 
         # 构建作者

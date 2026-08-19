@@ -274,12 +274,20 @@ class BaseParser:
         cover_url: str | None = None,
         duration: float = 0.0,
         headers: dict[str, str] | None = None,
+        *,
+        cover_headers: dict[str, str] | None = None,
     ):
         """创建视频内容"""
         cover_task = None
         if cover_url:
             cover_task = self.downloader.download_img(
-                cover_url, headers=headers or self.headers, proxy=self.proxy
+                cover_url,
+                headers=(
+                    cover_headers
+                    if cover_headers is not None
+                    else headers or self.headers
+                ),
+                proxy=self.proxy,
             )
         if isinstance(url_or_task, str):
             url_or_task = self.downloader.download_video(
@@ -294,12 +302,20 @@ class BaseParser:
         cover_url: str | None = None,
         duration: float = 0.0,
         headers: dict[str, str] | None = None,
+        *,
+        cover_headers: dict[str, str] | None = None,
     ):
         """创建视频内容，允许调用方自行决定下载任务实现"""
         cover_task = None
         if cover_url:
             cover_task = self.downloader.download_img(
-                cover_url, headers=headers or self.headers, proxy=self.proxy
+                cover_url,
+                headers=(
+                    cover_headers
+                    if cover_headers is not None
+                    else headers or self.headers
+                ),
+                proxy=self.proxy,
             )
         return VideoContent(path_task, cover_task, duration)
 

@@ -63,6 +63,62 @@ def test_motion_photo_video_url_prefers_h264_uri():
     )
 
 
+def test_douyin_image_headers_keep_ua_and_add_page_context():
+    parser = object.__new__(DouyinParser)
+    parser.ios_headers = {"User-Agent": "ios-agent", "Cookie": "page-cookie"}
+    referer = "https://www.iesdouyin.com/share/note/1234567890123456789/"
+
+    headers = parser._build_image_headers(
+        referer,
+        base_headers={
+            "User-Agent": "android-agent",
+            "cookie": "stale-cookie",
+            "Accept": "old-accept",
+            "Referer": "https://old.example/",
+        },
+    )
+
+    assert headers["User-Agent"] == "android-agent"
+    assert headers["Referer"] == referer
+    assert headers["Accept"] == parser._IMAGE_ACCEPT
+    assert headers["Accept-Language"] == "zh-CN,zh;q=0.9"
+    assert not any(key.lower() == "cookie" for key in headers)
+
+
+def test_video_content_uses_dedicated_cover_headers():
+    requests: dict[str, dict] = {}
+
+    class FakeDownloader:
+        def download_img(self, _url: str, **kwargs):
+            requests["cover"] = kwargs
+            return Path("cover.jpg")
+
+        def download_video(self, _url: str, **kwargs):
+            requests["video"] = kwargs
+            return Path("video.mp4")
+
+    parser = object.__new__(DouyinParser)
+    parser.cfg = SimpleNamespace(
+        proxy=None,
+        parser=SimpleNamespace(douyin=SimpleNamespace(use_proxy=False)),
+    )
+    parser.headers = {"User-Agent": "default-agent"}
+    parser.downloader = FakeDownloader()
+
+    content = parser.create_video_content(
+        "https://example.com/video.mp4",
+        "https://example.com/cover.webp",
+        headers={"User-Agent": "video-agent", "Accept": "*/*"},
+        cover_headers={"User-Agent": "cover-agent", "Accept": "image/*"},
+    )
+
+    assert content.path_task == Path("video.mp4")
+    assert content.cover == Path("cover.jpg")
+    assert requests["video"]["headers"]["User-Agent"] == "video-agent"
+    assert requests["cover"]["headers"]["User-Agent"] == "cover-agent"
+    assert requests["cover"]["headers"]["Accept"] == "image/*"
+
+
 def test_aweme_detail_schema_decodes_motion_photo_metadata():
     response = msgspec.json.decode(
         msgspec.json.encode(
@@ -125,15 +181,19 @@ def test_download_motion_photo_packages_and_cleans_intermediate_files(
     jpeg = b"\xff\xd8\xff\xdbjpeg-data\xff\xd9"
     video = b"\x00\x00\x00\x18ftypmp42mp4-data"
 
+    requests: dict[str, dict] = {}
+
     class FakeDownloader:
-        async def download_img(self, _url: str, *, img_name: str, **_kwargs) -> Path:
+        async def download_img(self, _url: str, *, img_name: str, **kwargs) -> Path:
+            requests["image"] = kwargs
             path = tmp_path / img_name
             path.write_bytes(jpeg)
             return path
 
         async def download_video(
-            self, _url: str, *, video_name: str, **_kwargs
+            self, _url: str, *, video_name: str, **kwargs
         ) -> Path:
+            requests["video"] = kwargs
             path = tmp_path / video_name
             path.write_bytes(video)
             return path
@@ -151,7 +211,7 @@ def test_download_motion_photo_packages_and_cleans_intermediate_files(
         parser._download_motion_photo(
             "https://example.com/cover.jpeg",
             "https://example.com/live.mp4",
-            headers={"User-Agent": "test"},
+            headers={"User-Agent": "test", "Cookie": "secret"},
             referer="https://www.iesdouyin.com/share/note/1234567890123456789/",
         )
     )
@@ -160,6 +220,12 @@ def test_download_motion_photo_packages_and_cleans_intermediate_files(
     assert result.suffix == ".jpg"
     assert result.read_bytes().endswith(video)
     assert not list(tmp_path.glob(".motion_*"))
+    assert requests["image"]["headers"]["Referer"].endswith("1234567890123456789/")
+    assert requests["image"]["headers"]["Accept"] == parser._IMAGE_ACCEPT
+    assert "Cookie" not in requests["image"]["headers"]
+    assert requests["video"]["headers"]["Referer"].endswith("1234567890123456789/")
+    assert requests["video"]["headers"]["Accept"] == "*/*"
+    assert "Cookie" not in requests["video"]["headers"]
 
 
 def test_a_bogus_matches_reference_vector(monkeypatch: pytest.MonkeyPatch):
