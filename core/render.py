@@ -469,6 +469,63 @@ class Renderer:
         text = (value or "").strip()
         return None if not text or _EMPTY_DESCRIPTION_RE.fullmatch(text) else text
 
+    @staticmethod
+    def _border_radius_px(value: object | None) -> float:
+        text = str(value or "").strip()
+        if not text:
+            return 0.0
+        match = re.match(r"^([0-9]*\.?[0-9]+)", text)
+        return float(match.group(1)) if match else 0.0
+
+    @classmethod
+    def _round_png_corners(cls, path: Path, radius_px: float) -> bool:
+        if radius_px <= 0:
+            return False
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError as exc:  # pragma: no cover - Pillow is a runtime dependency
+            cls._log_warning(f"Pillow 不可用，跳过卡片圆角裁切: {exc}")
+            return False
+
+        temporary = path.with_name(f".{path.stem}_{uuid.uuid4().hex}.png")
+        try:
+            with Image.open(path) as source:
+                image = source.convert("RGBA")
+                width, height = image.size
+                if width <= 0 or height <= 0:
+                    return False
+
+                scale = 4
+                scaled_width = width * scale
+                scaled_height = height * scale
+                scaled_radius = max(
+                    0,
+                    min(
+                        int(round(radius_px * scale)),
+                        min(scaled_width, scaled_height) // 2,
+                    ),
+                )
+                mask = Image.new("L", (scaled_width, scaled_height), 0)
+                draw = ImageDraw.Draw(mask)
+                draw.rounded_rectangle(
+                    (0, 0, scaled_width - 1, scaled_height - 1),
+                    radius=scaled_radius,
+                    fill=255,
+                )
+                resample = getattr(Image, "Resampling", Image).LANCZOS
+                mask = mask.resize((width, height), resample)
+                image.putalpha(mask)
+                image.save(temporary)
+            temporary.replace(path)
+            return True
+        except Exception as exc:
+            cls._log_warning(f"卡片圆角裁切失败，保留原图: {exc}")
+            try:
+                temporary.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return False
+
     @classmethod
     def _error_preview_path(cls) -> Path | None:
         for filename in cls._ERROR_PREVIEW_IMAGE_NAMES:
@@ -732,10 +789,21 @@ class Renderer:
             locator_factory = getattr(page, "locator", None)
             root = locator_factory("[data-card-root]") if callable(locator_factory) else None
             if root is not None and await root.count():
+                radius_px = 0.0
+                try:
+                    radius_px = self._border_radius_px(
+                        await root.first.evaluate(
+                            "(element) => getComputedStyle(element).borderTopLeftRadius"
+                        )
+                    )
+                except Exception as exc:
+                    self._log_warning(f"读取卡片圆角半径失败，跳过圆角裁切: {exc}")
                 await root.first.screenshot(
                     path=str(target.resolve()),
                     type="png",
                 )
+                if radius_px > 0:
+                    self._round_png_corners(target.resolve(), radius_px)
             else:
                 # Custom templates may not add the marker; crop to the body so
                 # the browser viewport itself never becomes an exported border.

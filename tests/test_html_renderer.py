@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from core.data import (
     DynamicContent,
@@ -215,9 +216,13 @@ class _FakeElement:
     async def count(self):
         return 1
 
+    async def evaluate(self, expression: str):
+        return self.page.border_radius
+
     async def screenshot(self, **kwargs):
         self.page.element_screenshot_calls.append(kwargs)
-        Path(kwargs["path"]).write_bytes(b"element-png")
+        image = Image.new("RGBA", (120, 72), (42, 82, 123, 255))
+        image.save(kwargs["path"])
 
 
 class _FakeCardPage(_FakePage):
@@ -225,6 +230,7 @@ class _FakeCardPage(_FakePage):
         super().__init__()
         self.element_screenshot_calls: list[dict] = []
         self.locator_calls: list[str] = []
+        self.border_radius = "30px"
 
     def locator(self, selector: str):
         self.locator_calls.append(selector)
@@ -623,8 +629,14 @@ def test_playwright_screenshot_crops_marked_card_root(
     page = fake.browser.context.page
     assert page.locator_calls == ["[data-card-root]"]
     assert page.element_screenshot_calls[0]["type"] == "png"
+    with Image.open(target) as image:
+        rgba = image.convert("RGBA")
+        assert rgba.getpixel((0, 0))[3] == 0
+        assert rgba.getpixel((rgba.width - 1, 0))[3] == 0
+        assert rgba.getpixel((0, rgba.height - 1))[3] == 0
+        assert rgba.getpixel((rgba.width - 1, rgba.height - 1))[3] == 0
+        assert rgba.getpixel((rgba.width // 2, rgba.height // 2))[3] == 255
     assert "full_page" not in page.element_screenshot_calls[0]
-    assert target.read_bytes() == b"element-png"
 
 
 def test_base_url_injection_preserves_existing_base(renderer_module, tmp_path: Path):
