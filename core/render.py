@@ -637,27 +637,31 @@ class Renderer:
             return None
 
         base = tuple(round(channel / total_weight) for channel in weighted)
-        page = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.32))
-        card_top = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.16))
-        card_bottom = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.24))
-        surface = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.24))
-        subtle = cls._rgb_to_hex(cls._mix_rgb(base, (250, 250, 252), 0.18))
-        border_rgb = cls._mix_rgb(base, (0, 0, 0), 0.80)
+        page = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.42))
+        card_top = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.24))
+        card_bottom = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.34))
+        surface = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.34))
+        subtle = cls._rgb_to_hex(cls._mix_rgb(base, (250, 250, 252), 0.26))
+        border_rgb = cls._mix_rgb(base, (0, 0, 0), 0.74)
+        muted_rgb = cls._mix_rgb(base, (32, 32, 36), 0.20)
+        secondary_rgb = cls._mix_rgb(base, (24, 24, 28), 0.12)
         return {
             "base_color": cls._rgb_to_hex(base),
             "page_bg": page,
             "card_bg": f"linear-gradient(180deg, {card_top} 0%, {card_bottom} 100%)",
             "glow": (
                 "radial-gradient(circle at 86% 5%, "
-                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.22) 0%, "
-                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.10) 26%, "
-                f"rgba({base[0]}, {base[1]}, {base[2]}, 0) 58%)"
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.34) 0%, "
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.17) 30%, "
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0) 64%)"
             ),
             "surface_bg": surface,
             "subtle_bg": subtle,
-            "border": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.14)",
-            "divider": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.13)",
-            "shadow": f"rgba({base[0]}, {base[1]}, {base[2]}, 0.16)",
+            "muted_text": cls._rgb_to_hex(muted_rgb),
+            "secondary_text": cls._rgb_to_hex(secondary_rgb),
+            "border": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.18)",
+            "divider": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.17)",
+            "shadow": f"rgba({base[0]}, {base[1]}, {base[2]}, 0.22)",
         }
 
     @classmethod
