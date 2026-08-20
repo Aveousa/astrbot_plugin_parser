@@ -76,6 +76,8 @@ _EMOJI_RE = re.compile(
     rf"(?:[\U0001F1E6-\U0001F1FF]{{2}}|{_EMOJI_CHARACTER}(?:\u200d{_EMOJI_CHARACTER})*)"
 )
 _EMPTY_DESCRIPTION_RE = re.compile(r"^(?:简介\s*[:：]\s*)?[-—–]+$")
+_TOPIC_TAG_RE = re.compile(r"(?<![A-Za-z0-9_#])#\s*([^#\s,，;；、。.!！?？|｜/\\]+)")
+_TOPIC_TRAILING_RE = re.compile(r"[\s,，;；、。.!！?？|｜/\\]+$")
 
 
 class Renderer:
@@ -113,6 +115,7 @@ class Renderer:
         "（对于除Apple、vivo机型以外的手机）可尝试点击“查看原图”后保存获取实况图~"
     )
     _ERROR_PREVIEW_IMAGE_NAMES: ClassVar[tuple[str, ...]] = ("error_preview.png",)
+    _THEME_CONTENT_KINDS: ClassVar[set[str]] = {"image", "graphics", "video", "dynamic"}
     _EMOJI_FETCH_TIMEOUT_SECONDS: ClassVar[float] = 3.0
     _BROWSER_VIEWPORT_WIDTH: ClassVar[int] = 760
     # A short viewport keeps the browser from padding compact cards to a large
@@ -470,6 +473,50 @@ class Renderer:
         return None if not text or _EMPTY_DESCRIPTION_RE.fullmatch(text) else text
 
     @staticmethod
+    def _dedupe_tags(tags: list[str]) -> list[str]:
+        seen: set[str] = set()
+        result: list[str] = []
+        for tag in tags:
+            key = tag.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(tag)
+        return result
+
+    @classmethod
+    def _split_topic_tags(cls, value: str | None) -> tuple[str | None, list[str]]:
+        text = (value or "").strip()
+        if not text:
+            return None, []
+
+        spans: list[tuple[int, int]] = []
+        tags: list[str] = []
+        for matched in _TOPIC_TAG_RE.finditer(text):
+            topic = _TOPIC_TRAILING_RE.sub("", matched.group(1).strip())
+            if not topic:
+                continue
+            spans.append(matched.span())
+            tags.append(f"# {topic}")
+
+        if not spans:
+            return text, []
+
+        pieces: list[str] = []
+        cursor = 0
+        for start, end in spans:
+            pieces.append(text[cursor:start])
+            cursor = end
+        pieces.append(text[cursor:])
+
+        cleaned = "".join(pieces)
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = re.sub(r" *\n *", "\n", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        cleaned = cleaned.strip(" \t\r\n,，;；、。.!！?？|｜/\\")
+        return cls._card_text(cleaned), cls._dedupe_tags(tags)
+
+    @staticmethod
     def _border_radius_px(value: object | None) -> float:
         text = str(value or "").strip()
         if not text:
@@ -525,6 +572,101 @@ class Renderer:
             except Exception:
                 pass
             return False
+
+    @staticmethod
+    def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+        return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+    @staticmethod
+    def _mix_rgb(
+        rgb: tuple[int, int, int],
+        target: tuple[int, int, int],
+        amount: float,
+    ) -> tuple[int, int, int]:
+        amount = max(0.0, min(1.0, amount))
+        return tuple(
+            max(0, min(255, round(channel * amount + target_channel * (1 - amount))))
+            for channel, target_channel in zip(rgb, target, strict=True)
+        )
+
+    @classmethod
+    def _preview_theme(cls, path: Path) -> dict[str, str] | None:
+        try:
+            from PIL import Image
+        except ImportError as exc:  # pragma: no cover - Pillow is a runtime dependency
+            cls._log_warning(f"Pillow 不可用，跳过 Apple 卡片动态取色: {exc}")
+            return None
+
+        try:
+            with Image.open(path) as source:
+                source.thumbnail((72, 72))
+                image = source.convert("RGBA")
+                weighted = [0.0, 0.0, 0.0]
+                total_weight = 0.0
+                pixels = (
+                    image.get_flattened_data()
+                    if hasattr(image, "get_flattened_data")
+                    else image.getdata()
+                )
+                for red, green, blue, alpha in pixels:
+                    if alpha < 64:
+                        continue
+                    maximum = max(red, green, blue)
+                    minimum = min(red, green, blue)
+                    chroma = maximum - minimum
+                    lightness = (maximum + minimum) / 510
+                    saturation = 0.0 if maximum == 0 else chroma / maximum
+                    if lightness < 0.04 or lightness > 0.98:
+                        weight = 0.25
+                    else:
+                        weight = 0.55 + saturation * 1.35 + chroma / 255
+                    weighted[0] += red * weight
+                    weighted[1] += green * weight
+                    weighted[2] += blue * weight
+                    total_weight += weight
+                if total_weight <= 0:
+                    return None
+        except Exception as exc:
+            cls._log_warning(f"Apple 卡片动态取色失败，使用默认白底: {exc}")
+            return None
+
+        base = tuple(round(channel / total_weight) for channel in weighted)
+        page = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.16))
+        card_top = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.055))
+        card_bottom = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.09))
+        surface = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.13))
+        subtle = cls._rgb_to_hex(cls._mix_rgb(base, (250, 250, 252), 0.10))
+        border_rgb = cls._mix_rgb(base, (0, 0, 0), 0.80)
+        return {
+            "page_bg": page,
+            "card_bg": f"linear-gradient(180deg, {card_top} 0%, {card_bottom} 100%)",
+            "surface_bg": surface,
+            "subtle_bg": subtle,
+            "border": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.14)",
+            "divider": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.13)",
+            "shadow": f"rgba({base[0]}, {base[1]}, {base[2]}, 0.16)",
+        }
+
+    @classmethod
+    def _dynamic_theme_from_contents(
+        cls, contents: list[dict[str, Any]]
+    ) -> dict[str, str] | None:
+        error_preview = cls._error_preview_path()
+        error_preview_path = error_preview.resolve() if error_preview else None
+        for content in contents:
+            if content.get("kind") not in cls._THEME_CONTENT_KINDS:
+                continue
+            path = content.get("path")
+            if not isinstance(path, Path) or not path.is_file():
+                continue
+            try:
+                if error_preview_path and path.resolve() == error_preview_path:
+                    continue
+            except OSError:
+                continue
+            if theme := cls._preview_theme(path):
+                return theme
+        return None
 
     @classmethod
     def _error_preview_path(cls) -> Path | None:
@@ -616,6 +758,11 @@ class Renderer:
                 avatar_path = None
 
         contents = [await self._content_context(content) for content in result.contents]
+        theme = (
+            self._dynamic_theme_from_contents(contents)
+            if bool(getattr(self.cfg, "card_dynamic_color", False))
+            else None
+        )
         platform_name = result.platform.name.lower()
         platform_logo_name = self._PLATFORM_LOGO_NAMES.get(platform_name)
         platform_logo_uri = (
@@ -640,6 +787,9 @@ class Renderer:
                 ("shares", "转发", "↗", self._STAT_ICON_NAMES["shares"]),
             )
         ]
+        title, title_topic_tags = self._split_topic_tags(self._card_text(result.title))
+        text, text_topic_tags = self._split_topic_tags(self._card_text(result.text))
+        topic_tags = self._dedupe_tags(title_topic_tags + text_topic_tags)
         card: dict[str, Any] = {
             "platform": {
                 "name": result.platform.name,
@@ -654,8 +804,9 @@ class Renderer:
             }
             if result.author
             else None,
-            "title": result.title,
-            "text": self._card_text(result.text),
+            "title": title,
+            "text": text,
+            "topic_tags": topic_tags,
             "timestamp": result.timestamp,
             "datetime": result.formatted_datetime(),
             "url": result.url,
@@ -671,6 +822,7 @@ class Renderer:
             "stats": stats,
             "stat_items": [item for item in stat_items if item["value"] is not None],
             "contents": contents,
+            "theme": theme,
             "repost": None,
         }
         # 防止第三方解析器意外构造循环转发对象。

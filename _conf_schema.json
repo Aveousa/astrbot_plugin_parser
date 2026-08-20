@@ -78,6 +78,12 @@
     "type": "string",
     "default": ""
   },
+  "card_dynamic_color": {
+    "description": "Apple 卡片动态取色",
+    "hint": "开启后 Apple 风格卡片会根据首张预览图生成柔和底色；预览图不可用时自动回退默认白底",
+    "type": "bool",
+    "default": false
+  },
   "emoji_style": {
     "description": "表情样式",
     "hint": "APPLE 使用 Apple 风格资源；没有本地资源时回退为系统字体",

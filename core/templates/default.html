@@ -23,10 +23,16 @@
     .author-name { font-size: 21px; font-weight: 700; }
     .platform { color: #6f7782; font-size: 14px; margin-top: 2px; }
     .time { color: #9aa1ab; font-size: 13px; }
-    h1 { margin: 18px 0 8px; font-size: 28px; line-height: 1.3; }
+    h1 { display: -webkit-box; margin: 18px 0 8px; max-height: 2.6em; overflow: hidden;
+         font-size: 28px; line-height: 1.3; overflow-wrap: anywhere; text-overflow: ellipsis;
+         -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
     .text, .extra { white-space: pre-wrap; overflow-wrap: anywhere; }
     .text { margin: 8px 0 16px; }
     .extra { color: #818894; font-size: 14px; margin-top: 12px; }
+    .topics { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 12px; }
+    .topic { display: inline-flex; max-width: 100%; padding: 3px 8px; overflow: hidden;
+             color: #4f5660; background: #f7f8fa; border: 1px solid #ececf0; border-radius: 999px;
+             font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
     .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 14px 0; }
     .media-grid.single { display: block; }
     .media { width: 100%; max-height: 560px; object-fit: cover; border-radius: 8px; }
@@ -76,6 +82,7 @@
   {% set video_description_truncated = has_video and card.text and card.text|length > video_description_limit %}
   {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
   {% if card.text and not has_video %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
+  {% if card.topic_tags %}<div class="topics" aria-label="话题">{% for tag in card.topic_tags %}<span class="topic">{{ tag|emoji }}</span>{% endfor %}</div>{% endif %}
 
   {% if visual %}
   <section class="media-grid{% if visual|length == 1 %} single{% endif %}">

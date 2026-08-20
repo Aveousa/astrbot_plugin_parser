@@ -72,6 +72,7 @@ class _Config:
     card_enabled = True
     card_template = "custom"
     card_custom_template = "custom"
+    card_dynamic_color = False
     emoji_style = "APPLE"
 
     def __init__(self, root: Path):
@@ -110,6 +111,146 @@ def test_builtin_templates_use_bundled_douyin_sans(
     assert 'data-card-root' in html
     for icon_name in ("like.png", "comment.png", "favorites.png", "share.png"):
         assert (font_path.parent / icon_name).resolve().as_uri() in html
+
+
+def test_apple_dynamic_color_is_disabled_by_default(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    config.card_template = "apple"
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    preview = tmp_path / "preview.png"
+    Image.new("RGB", (32, 32), (220, 40, 30)).save(preview)
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="dynamic color disabled",
+        contents=[ImageContent(preview)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    html = renderer.render_html(result, context)
+
+    assert context["card"]["theme"] is None
+    assert "--card-bg: #fff;" in html
+
+
+def test_apple_dynamic_color_uses_first_preview_image(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    config.card_template = "apple"
+    config.card_dynamic_color = True
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    preview = tmp_path / "preview.png"
+    Image.new("RGB", (32, 32), (220, 40, 30)).save(preview)
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="dynamic color enabled",
+        contents=[ImageContent(preview)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    html = renderer.render_html(result, context)
+    theme = context["card"]["theme"]
+
+    assert theme is not None
+    assert theme["page_bg"] != "#f5f5f7"
+    assert theme["card_bg"].startswith("linear-gradient(")
+    assert f"--card-page-bg: {theme['page_bg']};" in html
+    assert f"--card-bg: {theme['card_bg']};" in html
+
+
+@pytest.mark.parametrize("template", ["default", "compact", "apple"])
+def test_builtin_templates_clamp_title_to_two_lines(
+    renderer_module, tmp_path: Path, template: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="很长很长的标题" * 20,
+    )
+
+    html = renderer.render_html(result, asyncio.run(renderer._result_context(result)))
+
+    assert "-webkit-line-clamp: 2" in html
+    assert "text-overflow: ellipsis" in html
+
+
+@pytest.mark.parametrize("template", ["default", "compact", "apple"])
+def test_builtin_templates_split_topic_tags_from_title_before_preview(
+    renderer_module, tmp_path: Path, template: str
+):
+    config = _Config(tmp_path)
+    config.card_template = template
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    video = tmp_path / "video.mp4"
+    cover = tmp_path / "cover.png"
+    video.write_bytes(b"video")
+    Image.new("RGB", (32, 32), (64, 96, 160)).save(cover)
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="这是谁的修仙梦 # 鸣潮 # 鸣潮蜃云灯影凡尘剑心 # 鸣潮清宵",
+        contents=[VideoContent(video, cover=cover)],
+    )
+
+    context = asyncio.run(renderer._result_context(result))
+    html = renderer.render_html(result, context)
+
+    assert context["card"]["title"] == "这是谁的修仙梦"
+    assert context["card"]["topic_tags"] == [
+        "# 鸣潮",
+        "# 鸣潮蜃云灯影凡尘剑心",
+        "# 鸣潮清宵",
+    ]
+    assert "这是谁的修仙梦 # 鸣潮" not in html
+    assert "# 鸣潮" in html
+    assert "# 鸣潮蜃云灯影凡尘剑心" in html
+    assert "# 鸣潮清宵" in html
+
+    preview_marker = {
+        "default": 'class="media-grid',
+        "compact": 'class="grid"',
+        "apple": 'class="cover ',
+    }[template]
+    assert html.index('class="topics"') < html.index(preview_marker)
+
+
+def test_result_context_splits_topic_tags_from_description(renderer_module, tmp_path: Path):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="正片标题",
+        text="这是一段简介 # 鸣潮 # 鸣潮 # 清宵",
+    )
+
+    card = asyncio.run(renderer._result_context(result))["card"]
+
+    assert card["title"] == "正片标题"
+    assert card["text"] == "这是一段简介"
+    assert card["topic_tags"] == ["# 鸣潮", "# 清宵"]
+
+
+def test_topic_split_supports_attached_tags_without_splitting_csharp(
+    renderer_module, tmp_path: Path
+):
+    config = _Config(tmp_path)
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    result = ParseResult(
+        platform=Platform("douyin", "抖音"),
+        title="这是谁的修仙梦#鸣潮#清宵",
+        text="C# 教程 # 编程",
+    )
+
+    card = asyncio.run(renderer._result_context(result))["card"]
+
+    assert card["title"] == "这是谁的修仙梦"
+    assert card["text"] == "C# 教程"
+    assert card["topic_tags"] == ["# 鸣潮", "# 清宵", "# 编程"]
 
 
 @pytest.mark.parametrize("template", ["default", "compact", "apple"])

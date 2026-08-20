@@ -13,6 +13,13 @@
       color-scheme: light;
       font-family: "Douyin Sans", -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --card-page-bg: {{ card.theme.page_bg if card.theme else '#f5f5f7' }};
+      --card-bg: {{ card.theme.card_bg if card.theme else '#fff' }};
+      --card-surface-bg: {{ card.theme.surface_bg if card.theme else '#f2f2f7' }};
+      --card-subtle-bg: {{ card.theme.subtle_bg if card.theme else '#f5f5f7' }};
+      --card-border-color: {{ card.theme.border if card.theme else 'rgba(0, 0, 0, 0.08)' }};
+      --card-divider-color: {{ card.theme.divider if card.theme else '#e8e8ed' }};
+      --card-shadow-color: {{ card.theme.shadow if card.theme else 'rgba(0, 0, 0, 0.10)' }};
     }
 
     * { box-sizing: border-box; }
@@ -21,7 +28,7 @@
       width: 760px;
       margin: 0;
       padding: 24px;
-      background: #f5f5f7;
+      background: var(--card-page-bg);
       color: #1d1d1f;
       font-size: 16px;
       font-weight: 400;
@@ -36,10 +43,10 @@
       width: 712px;
       padding-bottom: 22px;
       overflow: hidden;
-      background: #fff;
-      border: 1px solid rgba(0, 0, 0, 0.08);
+      background: var(--card-bg);
+      border: 1px solid var(--card-border-color);
       border-radius: 30px;
-      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.04);
+      box-shadow: 0 18px 42px var(--card-shadow-color), 0 2px 8px rgba(0, 0, 0, 0.04);
     }
 
     .card-header {
@@ -124,12 +131,40 @@
     .content { padding: 0 22px; }
 
     h1 {
+      display: -webkit-box;
       margin: 2px 0 8px;
+      max-height: 2.32em;
+      overflow: hidden;
       color: #1d1d1f;
       font-size: 29px;
       font-weight: 700;
       line-height: 1.16;
       letter-spacing: -0.032em;
+      overflow-wrap: anywhere;
+      text-overflow: ellipsis;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 12px;
+    }
+
+    .topic {
+      display: inline-flex;
+      max-width: 100%;
+      padding: 4px 9px;
+      overflow: hidden;
+      color: #515154;
+      background: var(--card-subtle-bg);
+      border: 1px solid var(--card-divider-color);
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 560;
+      line-height: 1.25;
       overflow-wrap: anywhere;
     }
 
@@ -160,8 +195,8 @@
       width: calc(100% - 40px);
       margin: 18px 20px 0;
       overflow: hidden;
-      background: #f2f2f7;
-      border: 1px solid rgba(0, 0, 0, 0.06);
+      background: var(--card-surface-bg);
+      border: 1px solid var(--card-border-color);
       border-radius: 23px;
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
     }
@@ -228,8 +263,8 @@
       margin: 12px 20px 0;
       padding: 12px 14px;
       overflow: hidden;
-      background: #f5f5f7;
-      border: 1px solid #e5e5ea;
+      background: var(--card-subtle-bg);
+      border: 1px solid var(--card-divider-color);
       border-radius: 17px;
     }
 
@@ -249,7 +284,7 @@
       margin: 16px 22px 0;
       padding-top: 16px;
       color: #6e6e73;
-      border-top: 1px solid #e8e8ed;
+      border-top: 1px solid var(--card-divider-color);
       font-size: 14px;
       line-height: 1.55;
     }
@@ -260,7 +295,7 @@
       column-gap: 18px;
       margin: 21px 24px 0;
       padding: 18px 0 0;
-      border-top: 1px solid #e8e8ed;
+      border-top: 1px solid var(--card-divider-color);
     }
 
     .stat {
@@ -328,7 +363,7 @@
       padding-top: 12px;
       overflow-wrap: anywhere;
       color: #6e6e73;
-      border-top: 1px solid #e8e8ed;
+      border-top: 1px solid var(--card-divider-color);
       font-size: 12px;
       line-height: 1.5;
     }
@@ -336,8 +371,8 @@
     .repost {
       margin: 18px 22px 0;
       padding: 14px 15px;
-      background: #f5f5f7;
-      border: 1px solid #e5e5ea;
+      background: var(--card-subtle-bg);
+      border: 1px solid var(--card-divider-color);
       border-radius: 18px;
     }
 
@@ -431,11 +466,16 @@
     </div>
   </header>
 
-  {% if card.title or (card.text and not is_video_cover) or (cover and cover.kind == 'graphics' and cover.text) %}
+  {% if card.title or card.topic_tags or (card.text and not is_video_cover) or (cover and cover.kind == 'graphics' and cover.text) %}
   <section class="content">
     {% if card.title %}<h1>{{ card.title|emoji }}</h1>{% endif %}
     {% if card.text and not is_video_cover %}<div class="text">{{ card.text|emoji }}</div>{% endif %}
     {% if cover and cover.kind == 'graphics' and cover.text %}<div class="visual-note">{{ cover.text|emoji }}</div>{% endif %}
+    {% if card.topic_tags %}
+    <div class="topics" aria-label="话题">
+      {% for tag in card.topic_tags %}<span class="topic">{{ tag|emoji }}</span>{% endfor %}
+    </div>
+    {% endif %}
   </section>
   {% endif %}
 

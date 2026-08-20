@@ -206,6 +206,7 @@ class PluginConfig(ConfigNode):
     card_enabled: bool
     card_template: str
     card_custom_template: str | None
+    card_dynamic_color: bool
     emoji_style: str
 
     show_download_fail_tip: bool
@@ -232,6 +233,7 @@ class PluginConfig(ConfigNode):
             "card_enabled": True,
             "card_template": "apple",
             "card_custom_template": "",
+            "card_dynamic_color": False,
             "emoji_style": "APPLE",
         }
         for key, value in defaults.items():
