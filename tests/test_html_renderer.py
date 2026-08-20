@@ -152,10 +152,43 @@ def test_apple_dynamic_color_uses_first_preview_image(renderer_module, tmp_path:
     theme = context["card"]["theme"]
 
     assert theme is not None
+    assert theme["base_color"] != "#ffffff"
+    assert theme["source_path"] == str(preview)
     assert theme["page_bg"] != "#f5f5f7"
     assert theme["card_bg"].startswith("linear-gradient(")
+    assert theme["glow"].startswith("radial-gradient(")
     assert f"--card-page-bg: {theme['page_bg']};" in html
     assert f"--card-bg: {theme['card_bg']};" in html
+    assert f"--card-glow: {theme['glow']};" in html
+
+
+def test_apple_dynamic_color_skips_error_preview_placeholder(
+    renderer_module, tmp_path: Path, monkeypatch
+):
+    config = _Config(tmp_path)
+    config.card_template = "apple"
+    config.card_dynamic_color = True
+    renderer = renderer_module.Renderer(config)
+    renderer._emoji_source = None
+    error_cover = tmp_path / "error_preview.png"
+    Image.new("RGB", (32, 32), (220, 40, 30)).save(error_cover)
+    monkeypatch.setattr(renderer_module.Renderer, "_RESOURCES_DIR", tmp_path)
+
+    async def make_context():
+        async def failed_cover_download():
+            raise DownloadException("HTTP 403 Forbidden")
+
+        result = ParseResult(
+            platform=Platform("douyin", "抖音"),
+            title="cover failure",
+            contents=[VideoContent(tmp_path / "video.mp4", cover=failed_cover_download())],
+        )
+        return await renderer._result_context(result)
+
+    context = asyncio.run(make_context())
+
+    assert context["card"]["contents"][0]["uri"] == error_cover.resolve().as_uri()
+    assert context["card"]["theme"] is None
 
 
 @pytest.mark.parametrize("template", ["default", "compact", "apple"])

@@ -142,6 +142,12 @@ class Renderer:
         else:
             logger.error(message)
 
+    @staticmethod
+    def _log_debug(message: str) -> None:
+        log_debug = getattr(logger, "debug", None)
+        if callable(log_debug):
+            log_debug(message)
+
     def __init__(self, config: PluginConfig):
         self.cfg = config
         self.template_dirs = self._template_dirs()
@@ -631,15 +637,22 @@ class Renderer:
             return None
 
         base = tuple(round(channel / total_weight) for channel in weighted)
-        page = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.16))
-        card_top = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.055))
-        card_bottom = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.09))
-        surface = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.13))
-        subtle = cls._rgb_to_hex(cls._mix_rgb(base, (250, 250, 252), 0.10))
+        page = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.32))
+        card_top = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.16))
+        card_bottom = cls._rgb_to_hex(cls._mix_rgb(base, (255, 255, 255), 0.24))
+        surface = cls._rgb_to_hex(cls._mix_rgb(base, (245, 245, 247), 0.24))
+        subtle = cls._rgb_to_hex(cls._mix_rgb(base, (250, 250, 252), 0.18))
         border_rgb = cls._mix_rgb(base, (0, 0, 0), 0.80)
         return {
+            "base_color": cls._rgb_to_hex(base),
             "page_bg": page,
             "card_bg": f"linear-gradient(180deg, {card_top} 0%, {card_bottom} 100%)",
+            "glow": (
+                "radial-gradient(circle at 86% 5%, "
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.22) 0%, "
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0.10) 26%, "
+                f"rgba({base[0]}, {base[1]}, {base[2]}, 0) 58%)"
+            ),
             "surface_bg": surface,
             "subtle_bg": subtle,
             "border": f"rgba({border_rgb[0]}, {border_rgb[1]}, {border_rgb[2]}, 0.14)",
@@ -665,6 +678,7 @@ class Renderer:
             except OSError:
                 continue
             if theme := cls._preview_theme(path):
+                theme["source_path"] = str(path)
                 return theme
         return None
 
@@ -758,11 +772,18 @@ class Renderer:
                 avatar_path = None
 
         contents = [await self._content_context(content) for content in result.contents]
-        theme = (
-            self._dynamic_theme_from_contents(contents)
-            if bool(getattr(self.cfg, "card_dynamic_color", False))
-            else None
-        )
+        dynamic_color_enabled = bool(getattr(self.cfg, "card_dynamic_color", False))
+        theme = self._dynamic_theme_from_contents(contents) if dynamic_color_enabled else None
+        if dynamic_color_enabled:
+            if theme:
+                self._log_debug(
+                    "Apple 卡片动态取色已应用: "
+                    f"source={theme.get('source_path')}, base={theme.get('base_color')}"
+                )
+            else:
+                self._log_debug(
+                    "Apple 卡片动态取色未应用: 未找到可读取的真实本地预览图"
+                )
         platform_name = result.platform.name.lower()
         platform_logo_name = self._PLATFORM_LOGO_NAMES.get(platform_name)
         platform_logo_uri = (

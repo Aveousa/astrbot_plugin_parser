@@ -15,6 +15,7 @@
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
       --card-page-bg: {{ card.theme.page_bg if card.theme else '#f5f5f7' }};
       --card-bg: {{ card.theme.card_bg if card.theme else '#fff' }};
+      --card-glow: {{ card.theme.glow if card.theme else 'none' }};
       --card-surface-bg: {{ card.theme.surface_bg if card.theme else '#f2f2f7' }};
       --card-subtle-bg: {{ card.theme.subtle_bg if card.theme else '#f5f5f7' }};
       --card-border-color: {{ card.theme.border if card.theme else 'rgba(0, 0, 0, 0.08)' }};
@@ -47,6 +48,20 @@
       border: 1px solid var(--card-border-color);
       border-radius: 30px;
       box-shadow: 0 18px 42px var(--card-shadow-color), 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background: var(--card-glow);
+      pointer-events: none;
+    }
+
+    .card > * {
+      position: relative;
+      z-index: 1;
     }
 
     .card-header {
