@@ -1,5 +1,7 @@
 import re
 from asyncio import create_task, gather, to_thread
+from base64 import b64decode
+from binascii import Error as BinasciiError
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +66,88 @@ class DouyinParser(BaseParser):
         self.mycfg = config.parser.douyin
         self.cookiejar = CookieJar(config, self.mycfg, domain="douyin.com")
         self._set_cookies()
+
+    @property
+    def worker_proxy_url(self) -> str | None:
+        """仅在开关和有效根地址同时存在时启用抖音 Worker 代理。"""
+        parser_config = getattr(self, "mycfg", None)
+        if not bool(getattr(parser_config, "worker_proxy_enabled", False)):
+            return None
+        raw_url = getattr(parser_config, "worker_proxy_url", None)
+        if not isinstance(raw_url, str) or not (proxy_url := raw_url.strip()):
+            return None
+
+        parsed = urlparse(proxy_url)
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.params
+            or parsed.query
+            or parsed.fragment
+        ):
+            return None
+        return proxy_url.rstrip("/")
+
+    def _worker_api_request_url(self, target_url: str) -> tuple[str, bool]:
+        proxy_url = self.worker_proxy_url
+        if not proxy_url:
+            return target_url, False
+
+        parsed = urlparse(target_url)
+        route = {
+            "www.douyin.com": "douyin",
+            "ttwid.bytedance.com": "ttwid",
+        }.get((parsed.hostname or "").lower())
+        if not route:
+            return target_url, False
+
+        request_url = f"{proxy_url}/{route}{parsed.path or '/'}"
+        if parsed.query:
+            request_url = f"{request_url}?{parsed.query}"
+        return request_url, True
+
+    def _worker_download_request(
+        self,
+        target_url: str,
+        headers: Mapping[str, str],
+        *,
+        allow_redirects: bool = True,
+    ) -> tuple[Any, bool]:
+        """为 Worker 支持的任意 GET 资源构造 ``POST /download`` 请求。"""
+        if proxy_url := self.worker_proxy_url:
+            return (
+                self.session.post(
+                    f"{proxy_url}/download",
+                    json={"url": target_url, "headers": dict(headers)},
+                    allow_redirects=allow_redirects,
+                ),
+                True,
+            )
+        return (
+            self.session.get(
+                target_url,
+                headers=headers,
+                allow_redirects=allow_redirects,
+            ),
+            False,
+        )
+
+    @staticmethod
+    def _decode_worker_api_body(body: bytes) -> bytes:
+        """解包 cloudflare_worker_v2.js 返回的 Base64 API 响应。"""
+        try:
+            payload = msgspec.json.decode(body)
+        except msgspec.DecodeError as exc:
+            raise ValueError("Worker API 响应不是 JSON") from exc
+        if not isinstance(payload, dict):
+            raise TypeError("Worker API 响应结构无效")
+        encoded = payload.get("data")
+        if payload.get("encoding") != "base64" or not isinstance(encoded, str):
+            raise ValueError("Worker API 响应缺少 Base64 数据")
+        try:
+            return b64decode(encoded, validate=True)
+        except (BinasciiError, ValueError) as exc:
+            raise ValueError("Worker API 响应包含无效 Base64 数据") from exc
 
     def _set_cookies(self, cookies_str: str = ""):
         """设置cookie到请求头"""
@@ -221,15 +305,19 @@ class DouyinParser(BaseParser):
     async def parse_video(self, url: str):
         await self.ensure_ttwid()
         share_headers = self._sync_headers_for_url(url)
-        async with self.session.get(
-            url, headers=share_headers, allow_redirects=False
-        ) as resp:
+        request, via_worker = self._worker_download_request(
+            url,
+            share_headers,
+            allow_redirects=False,
+        )
+        async with request as resp:
             if resp.status != 200:
                 raise ParseException(f"status: {resp.status}")
             text = await resp.text()
-            set_cookie_headers = resp.headers.getall("Set-Cookie", [])
-            self.cookiejar.update_from_response(set_cookie_headers)
-            self._set_cookies()
+            if not via_worker:
+                set_cookie_headers = resp.headers.getall("Set-Cookie", [])
+                self.cookiejar.update_from_response(set_cookie_headers)
+                self._set_cookies()
 
         pattern = re.compile(
             pattern=r"window\._ROUTER_DATA\s*=\s*(.*?)</script>",
@@ -427,14 +515,18 @@ class DouyinParser(BaseParser):
 
             failure_reason: str | None = None
             try:
-                async with self.session.get(url, headers=headers) as resp:
+                request_url, via_worker = self._worker_api_request_url(url)
+                async with self.session.get(request_url, headers=headers) as resp:
                     status = resp.status
                     body = await resp.read()
-                    self.cookiejar.update_from_response(
-                        resp.headers.getall("Set-Cookie", [])
-                    )
-                    self._set_cookies()
-            except (ClientError, TimeoutError) as e:
+                    if via_worker and status < 400:
+                        body = self._decode_worker_api_body(body)
+                    elif not via_worker:
+                        self.cookiejar.update_from_response(
+                            resp.headers.getall("Set-Cookie", [])
+                        )
+                        self._set_cookies()
+            except (ClientError, TimeoutError, TypeError, ValueError) as e:
                 logger.info(f"[抖音] 登录详情接口请求失败，保留分享页数据: {e}")
                 return None
 
@@ -613,6 +705,7 @@ class DouyinParser(BaseParser):
                 image_url,
                 headers=image_headers,
                 proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
             contents.append(
                 ImageContent(
@@ -686,12 +779,14 @@ class DouyinParser(BaseParser):
             img_name=f".motion_{cache_stem}_{work_id}_cover.jpg",
             headers=self._build_image_headers(referer, base_headers=headers),
             proxy=self.proxy,
+            worker_proxy_url=self.worker_proxy_url,
         )
         video_task = self.downloader.download_video(
             video_url,
             video_name=f".motion_{cache_stem}_{work_id}_clip.mp4",
             headers=self._build_media_headers(referer, base_headers=headers),
             proxy=self.proxy,
+            worker_proxy_url=self.worker_proxy_url,
         )
         image_result, video_result = await gather(
             image_task,
@@ -747,11 +842,11 @@ class DouyinParser(BaseParser):
             headers = self._build_media_headers(referer)
             headers["Range"] = "bytes=0-1"
             try:
-                async with self.session.get(
+                request, via_worker = self._worker_download_request(
                     play_url,
-                    headers=headers,
-                    allow_redirects=True,
-                ) as resp:
+                    headers,
+                )
+                async with request as resp:
                     if resp.status >= 400:
                         logger.debug(
                             f"[抖音] ratio={ratio} 探测失败，状态码: {resp.status}"
@@ -761,7 +856,7 @@ class DouyinParser(BaseParser):
                     if size <= 0:
                         logger.debug(f"[抖音] ratio={ratio} 未拿到有效文件大小")
                         continue
-                    final_url = str(resp.url)
+                    final_url = play_url if via_worker else str(resp.url)
             except (ClientError, TimeoutError) as e:
                 logger.debug(f"[抖音] ratio={ratio} 探测请求失败: {e}")
                 continue
@@ -794,15 +889,19 @@ class DouyinParser(BaseParser):
             "request_source": "200",
         }
         logger.debug(f"[抖音] 请求参数: {params}")
-        async with self.session.get(
-            url, params=params, headers=self.android_headers
-        ) as resp:
+        request_url = f"{url}?{urlencode(params)}"
+        request, via_worker = self._worker_download_request(
+            request_url,
+            self.android_headers,
+        )
+        async with request as resp:
             logger.debug(f"[抖音] 幻灯片API响应状态码: {resp.status}")
             resp.raise_for_status()
             # 从响应中提取 Set-Cookie 并更新
-            set_cookie_headers = resp.headers.getall("Set-Cookie", [])
-            self.cookiejar.update_from_response(set_cookie_headers)
-            self._set_cookies()
+            if not via_worker:
+                set_cookie_headers = resp.headers.getall("Set-Cookie", [])
+                self.cookiejar.update_from_response(set_cookie_headers)
+                self._set_cookies()
 
             from .slides import SlidesInfo
 

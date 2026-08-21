@@ -1,4 +1,5 @@
 import asyncio
+from base64 import b64encode
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -85,6 +86,109 @@ def test_douyin_image_headers_keep_ua_and_add_page_context():
     assert not any(key.lower() == "cookie" for key in headers)
 
 
+@pytest.mark.parametrize(
+    ("enabled", "url", "expected"),
+    [
+        (False, "https://proxy.example", None),
+        (True, "", None),
+        (True, "not-a-url", None),
+        (True, "https://proxy.example/?token=secret", None),
+        (True, "  https://proxy.example/  ", "https://proxy.example"),
+    ],
+)
+def test_worker_proxy_requires_enabled_switch_and_valid_address(
+    enabled: bool, url: str, expected: str | None
+):
+    parser = object.__new__(DouyinParser)
+    parser.mycfg = SimpleNamespace(
+        worker_proxy_enabled=enabled,
+        worker_proxy_url=url,
+    )
+
+    assert parser.worker_proxy_url == expected
+
+
+def test_worker_api_url_matches_deployed_worker_routes():
+    parser = object.__new__(DouyinParser)
+    parser.mycfg = SimpleNamespace(
+        worker_proxy_enabled=True,
+        worker_proxy_url="https://proxy.example/",
+    )
+    target = "https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=123"
+
+    request_url, via_worker = parser._worker_api_request_url(target)
+
+    assert via_worker is True
+    assert request_url == (
+        "https://proxy.example/douyin/aweme/v1/web/aweme/detail/?aweme_id=123"
+    )
+    untouched, via_worker = parser._worker_api_request_url(
+        "https://www.iesdouyin.com/share/video/123/"
+    )
+    assert untouched == "https://www.iesdouyin.com/share/video/123/"
+    assert via_worker is False
+
+
+def test_worker_download_request_posts_target_and_headers():
+    calls: list[tuple[str, dict]] = []
+    sentinel = object()
+
+    class Session:
+        closed = False
+
+        def post(self, url: str, **kwargs):
+            calls.append((url, kwargs))
+            return sentinel
+
+        def get(self, *_args, **_kwargs):
+            raise AssertionError("Worker 模式不应直接 GET 目标 URL")
+
+    parser = object.__new__(DouyinParser)
+    parser.mycfg = SimpleNamespace(
+        worker_proxy_enabled=True,
+        worker_proxy_url="https://proxy.example",
+    )
+    parser._session = Session()
+
+    request, via_worker = parser._worker_download_request(
+        "https://www.iesdouyin.com/share/video/123/",
+        {"User-Agent": "test", "Cookie": "ttwid=value"},
+        allow_redirects=False,
+    )
+
+    assert request is sentinel
+    assert via_worker is True
+    assert calls == [
+        (
+            "https://proxy.example/download",
+            {
+                "json": {
+                    "url": "https://www.iesdouyin.com/share/video/123/",
+                    "headers": {
+                        "User-Agent": "test",
+                        "Cookie": "ttwid=value",
+                    },
+                },
+                "allow_redirects": False,
+            },
+        )
+    ]
+
+
+def test_worker_api_body_decodes_base64_wrapper():
+    upstream = b'{"status_code":0,"aweme_detail":{"desc":"test"}}'
+    wrapped = msgspec.json.encode(
+        {"data": b64encode(upstream).decode(), "encoding": "base64"}
+    )
+
+    assert DouyinParser._decode_worker_api_body(wrapped) == upstream
+
+    with pytest.raises(ValueError, match="Base64"):
+        DouyinParser._decode_worker_api_body(
+            msgspec.json.encode({"data": "not-base64", "encoding": "base64"})
+        )
+
+
 def test_video_content_uses_dedicated_cover_headers():
     requests: dict[str, dict] = {}
 
@@ -102,6 +206,10 @@ def test_video_content_uses_dedicated_cover_headers():
         proxy=None,
         parser=SimpleNamespace(douyin=SimpleNamespace(use_proxy=False)),
     )
+    parser.mycfg = SimpleNamespace(
+        worker_proxy_enabled=True,
+        worker_proxy_url="https://proxy.example/",
+    )
     parser.headers = {"User-Agent": "default-agent"}
     parser.downloader = FakeDownloader()
 
@@ -117,6 +225,8 @@ def test_video_content_uses_dedicated_cover_headers():
     assert requests["video"]["headers"]["User-Agent"] == "video-agent"
     assert requests["cover"]["headers"]["User-Agent"] == "cover-agent"
     assert requests["cover"]["headers"]["Accept"] == "image/*"
+    assert requests["video"]["worker_proxy_url"] == "https://proxy.example"
+    assert requests["cover"]["worker_proxy_url"] == "https://proxy.example"
 
 
 def test_aweme_detail_schema_decodes_motion_photo_metadata():

@@ -69,6 +69,7 @@ class Downloader:
         file_name: str | None = None,
         headers: dict[str, str] | None = None,
         proxy: str | None | object = ...,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         """流式下载"""
         if not file_name:
@@ -79,12 +80,25 @@ class Downloader:
             return file_path
         headers = headers or self.default_headers
         request_url = self._request_url(url)
+        proxy_kwargs = {} if proxy is ... else {"proxy": proxy}
         retries = self.cfg.download_retry_times
         for attempt in range(retries + 1):
             try:
-                async with self.client.get(
-                    request_url, headers=headers, allow_redirects=True, proxy=proxy
-                ) as response:
+                if worker_proxy_url:
+                    request = self.client.post(
+                        f"{worker_proxy_url.rstrip('/')}/download",
+                        json={"url": url, "headers": headers},
+                        allow_redirects=True,
+                        **proxy_kwargs,
+                    )
+                else:
+                    request = self.client.get(
+                        request_url,
+                        headers=headers,
+                        allow_redirects=True,
+                        **proxy_kwargs,
+                    )
+                async with request as response:
                     if response.status >= 400:
                         raise ClientError(f"HTTP {response.status} {response.reason}")
                     content_length = response.content_length
@@ -161,11 +175,16 @@ class Downloader:
         video_name: str | None = None,
         headers: dict[str, str] | None = None,
         proxy: str | None = None,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         if video_name is None:
             video_name = generate_file_name(url, ".mp4")
         return await self.streamd(
-            url, file_name=video_name, headers=headers, proxy=proxy
+            url,
+            file_name=video_name,
+            headers=headers,
+            proxy=proxy,
+            worker_proxy_url=worker_proxy_url,
         )
 
     @auto_task
@@ -176,11 +195,16 @@ class Downloader:
         audio_name: str | None = None,
         headers: dict[str, str] | None = None,
         proxy: str | None = None,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         if audio_name is None:
             audio_name = generate_file_name(url, ".mp3")
         return await self.streamd(
-            url, file_name=audio_name, headers=headers, proxy=proxy
+            url,
+            file_name=audio_name,
+            headers=headers,
+            proxy=proxy,
+            worker_proxy_url=worker_proxy_url,
         )
 
     @auto_task
@@ -191,11 +215,16 @@ class Downloader:
         file_name: str | None = None,
         headers: dict[str, str] | None = None,
         proxy: str | None | object = ...,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         if file_name is None:
             file_name = generate_file_name(url, ".zip")
         return await self.streamd(
-            url, file_name=file_name, headers=headers, proxy=proxy
+            url,
+            file_name=file_name,
+            headers=headers,
+            proxy=proxy,
+            worker_proxy_url=worker_proxy_url,
         )
 
     @auto_task
@@ -206,10 +235,17 @@ class Downloader:
         img_name: str | None = None,
         headers: dict[str, str] | None = None,
         proxy: str | None | object = ...,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         if img_name is None:
             img_name = generate_file_name(url, ".jpg")
-        return await self.streamd(url, file_name=img_name, headers=headers, proxy=proxy)
+        return await self.streamd(
+            url,
+            file_name=img_name,
+            headers=headers,
+            proxy=proxy,
+            worker_proxy_url=worker_proxy_url,
+        )
 
     async def download_imgs_without_raise(
         self,
@@ -217,9 +253,18 @@ class Downloader:
         *,
         headers: dict[str, str] | None = None,
         proxy: str | None | object = ...,
+        worker_proxy_url: str | None = None,
     ) -> list[Path]:
         paths_or_errs = await gather(
-            *[self.download_img(url, headers=headers, proxy=proxy) for url in urls],
+            *[
+                self.download_img(
+                    url,
+                    headers=headers,
+                    proxy=proxy,
+                    worker_proxy_url=worker_proxy_url,
+                )
+                for url in urls
+            ],
             return_exceptions=True,
         )
         return [p for p in paths_or_errs if isinstance(p, Path)]
@@ -233,13 +278,24 @@ class Downloader:
         output_path: Path,
         headers: dict[str, str] | None = None,
         proxy: str | None = None,
+        worker_proxy_url: str | None = None,
     ) -> Path:
         """
         download video and audio file by url with stream and merge
         """
         v_path, a_path = await gather(
-            self.download_video(v_url, headers=headers, proxy=proxy),
-            self.download_audio(a_url, headers=headers, proxy=proxy),
+            self.download_video(
+                v_url,
+                headers=headers,
+                proxy=proxy,
+                worker_proxy_url=worker_proxy_url,
+            ),
+            self.download_audio(
+                a_url,
+                headers=headers,
+                proxy=proxy,
+                worker_proxy_url=worker_proxy_url,
+            ),
         )
         await merge_av(v_path=v_path, a_path=a_path, output_path=output_path)
         return output_path

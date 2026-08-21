@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import sys
 import tempfile
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -75,3 +77,78 @@ def test_request_url_keeps_plain_url_as_string(download_module):
     raw_url = "https://example.com/media/image.webp?from=327834062"
 
     assert download_module.Downloader._request_url(raw_url) == raw_url
+
+
+def test_streamd_posts_worker_download_contract(download_module, tmp_path: Path):
+    calls: list[tuple[str, dict]] = []
+    media = b"worker-media"
+
+    class Content:
+        async def iter_chunked(self, _size: int):
+            yield media
+
+    class Response:
+        status = 200
+        reason = "OK"
+        content_length = len(media)
+        content = Content()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+    class Client:
+        def post(self, url: str, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+        def get(self, *_args, **_kwargs):
+            raise AssertionError("Worker 模式不应直连媒体 URL")
+
+    class Progress:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def update(self, _size: int):
+            return None
+
+    downloader = object.__new__(download_module.Downloader)
+    downloader.cfg = SimpleNamespace(cache_dir=tmp_path, download_retry_times=0)
+    downloader.max_size = 1
+    downloader.default_headers = {"User-Agent": "default"}
+    downloader.client = Client()
+    downloader.get_progress_bar = lambda *_args, **_kwargs: Progress()
+
+    async def download():
+        return await downloader.streamd(
+            "https://p3-sign.douyinpic.com/media.webp?x=1",
+            file_name="media.webp",
+            headers={"User-Agent": "douyin", "Referer": "https://douyin.com/"},
+            proxy=None,
+            worker_proxy_url="https://proxy.example/",
+        )
+
+    path = asyncio.run(download())
+
+    assert path.read_bytes() == media
+    assert calls == [
+        (
+            "https://proxy.example/download",
+            {
+                "json": {
+                    "url": "https://p3-sign.douyinpic.com/media.webp?x=1",
+                    "headers": {
+                        "User-Agent": "douyin",
+                        "Referer": "https://douyin.com/",
+                    },
+                },
+                "allow_redirects": True,
+                "proxy": None,
+            },
+        )
+    ]

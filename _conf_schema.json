@@ -156,7 +156,19 @@
         "name": "抖音解析器",
         "items": {
           "enable": {"description": "启用", "type": "bool", "default": true},
-          "use_proxy": {"description": "使用代理", "type": "bool", "default": false},
+          "use_proxy": {"description": "使用全局 HTTP 代理", "type": "bool", "default": false},
+          "worker_proxy_enabled": {
+            "description": "启用抖音专用代理",
+            "hint": "仅在同时填写代理地址时生效，只影响抖音解析与媒体下载",
+            "type": "bool",
+            "default": false
+          },
+          "worker_proxy_url": {
+            "description": "抖音专用代理地址",
+            "hint": "填写已部署 cloudflare_worker_v2.js 的 Worker 根地址，例如 https://example.workers.dev；请仅使用可信部署",
+            "type": "string",
+            "default": ""
+          },
           "cookies": {"description": "Cookies", "type": "text", "default": ""}
         }
       },

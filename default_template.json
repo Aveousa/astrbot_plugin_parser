@@ -11,6 +11,8 @@
     "__template_key": "douyin",
     "enable": true,
     "use_proxy": false,
+    "worker_proxy_enabled": false,
+    "worker_proxy_url": "",
     "cookies": ""
   },
   {

@@ -88,6 +88,11 @@ class BaseParser:
         except AttributeError:
             return None
 
+    @property
+    def worker_proxy_url(self) -> str | None:
+        """返回平台专用的 Worker 下载代理；默认不启用。"""
+        return None
+
     def __init_subclass__(cls, **kwargs):
         """自动注册子类到 _registry"""
         super().__init_subclass__(**kwargs)
@@ -264,7 +269,10 @@ class BaseParser:
         avatar_task = None
         if avatar_url:
             avatar_task = self.downloader.download_img(
-                avatar_url, headers=headers or self.headers, proxy=self.proxy
+                avatar_url,
+                headers=headers or self.headers,
+                proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
         return Author(name=name, avatar=avatar_task, description=description)
 
@@ -288,10 +296,14 @@ class BaseParser:
                     else headers or self.headers
                 ),
                 proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
         if isinstance(url_or_task, str):
             url_or_task = self.downloader.download_video(
-                url_or_task, headers=headers or self.headers, proxy=self.proxy
+                url_or_task,
+                headers=headers or self.headers,
+                proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
 
         return VideoContent(url_or_task, cover_task, duration)
@@ -316,6 +328,7 @@ class BaseParser:
                     else headers or self.headers
                 ),
                 proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
         return VideoContent(path_task, cover_task, duration)
 
@@ -328,7 +341,10 @@ class BaseParser:
         contents: list[ImageContent] = []
         for url in image_urls:
             task = self.downloader.download_img(
-                url, headers=headers or self.headers, proxy=self.proxy
+                url,
+                headers=headers or self.headers,
+                proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
             contents.append(ImageContent(task))
         return contents
@@ -342,7 +358,10 @@ class BaseParser:
         contents: list[DynamicContent] = []
         for url in dynamic_urls:
             task = self.downloader.download_video(
-                url, headers=headers or self.headers, proxy=self.proxy
+                url,
+                headers=headers or self.headers,
+                proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
             contents.append(DynamicContent(task))
         return contents
@@ -356,7 +375,10 @@ class BaseParser:
         """创建音频内容"""
         if isinstance(url_or_task, str):
             url_or_task = self.downloader.download_audio(
-                url_or_task, headers=headers or self.headers, proxy=self.proxy
+                url_or_task,
+                headers=headers or self.headers,
+                proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
 
         return AudioContent(url_or_task, duration)
@@ -370,7 +392,10 @@ class BaseParser:
     ):
         """创建图文内容 图片不能为空 文字可空 渲染时文字在前 图片在后"""
         image_task = self.downloader.download_img(
-            image_url, headers=headers or self.headers, proxy=self.proxy
+            image_url,
+            headers=headers or self.headers,
+            proxy=self.proxy,
+            worker_proxy_url=self.worker_proxy_url,
         )
         return GraphicsContent(image_task, text, alt)
 
@@ -387,6 +412,7 @@ class BaseParser:
                 headers=headers or self.headers,
                 file_name=name,
                 proxy=self.proxy,
+                worker_proxy_url=self.worker_proxy_url,
             )
 
         return FileContent(url_or_task)

@@ -180,6 +180,28 @@ def test_only_four_parser_templates_are_exposed():
     assert {item["__template_key"] for item in defaults} == supported
 
 
+def test_douyin_exposes_dedicated_worker_proxy_settings():
+    schema = json.loads((ROOT / "_conf_schema.json").read_text(encoding="utf-8"))
+    defaults = json.loads((ROOT / "default_template.json").read_text(encoding="utf-8"))
+
+    templates = schema["parsers_template"]["templates"]
+    douyin_items = templates["douyin"]["items"]
+    assert douyin_items["worker_proxy_enabled"]["default"] is False
+    assert douyin_items["worker_proxy_url"]["default"] == ""
+    assert all(
+        "worker_proxy_enabled" not in template["items"]
+        and "worker_proxy_url" not in template["items"]
+        for name, template in templates.items()
+        if name != "douyin"
+    )
+
+    douyin_defaults = next(
+        item for item in defaults if item["__template_key"] == "douyin"
+    )
+    assert douyin_defaults["worker_proxy_enabled"] is False
+    assert douyin_defaults["worker_proxy_url"] == ""
+
+
 def test_parser_config_migration_keeps_legacy_bilibili_preference(config_module):
     raw = config_module.AstrBotConfig(
         {
@@ -212,4 +234,7 @@ def test_parser_config_migration_keeps_legacy_bilibili_preference(config_module)
     assert bilibili["cookies"] == "kept-cookie"
     assert bilibili["video_codec_list"] == ["HEV"]
     assert "video_codecs" not in bilibili
+    douyin = raw["parsers_template"][1]
+    assert douyin["worker_proxy_enabled"] is False
+    assert douyin["worker_proxy_url"] == ""
     assert raw.save_calls == 1

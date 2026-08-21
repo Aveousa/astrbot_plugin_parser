@@ -155,6 +155,8 @@ class ParserItem(ConfigNode):
     __template_key: str
     enable: bool
     use_proxy: bool
+    worker_proxy_enabled: bool | None
+    worker_proxy_url: str | None
     cookies: str | None
     video_codec_list: list | None
     video_quality: str | None
