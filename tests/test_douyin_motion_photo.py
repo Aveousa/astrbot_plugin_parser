@@ -11,7 +11,7 @@ from core.parsers.douyin.motion_photo import XMP_HEADER, build_motion_photo
 from core.parsers.douyin.slides import Image as SlidesImage
 from core.parsers.douyin.slides import PlayAddr as SlidesPlayAddr
 from core.parsers.douyin.slides import Video as SlidesVideo
-from core.parsers.douyin.video import AwemeDetailRes, Image, PlayAddr, Video
+from core.parsers.douyin.video import AwemeDetailRes, Image, PlayAddr, Video, VideoData
 
 
 def test_build_motion_photo_injects_xmp_and_appends_video(tmp_path: Path):
@@ -62,6 +62,77 @@ def test_motion_photo_video_url_prefers_h264_uri():
         "https://aweme.snssdk.com/aweme/v1/play/"
         "?video_id=live-video-id&ratio=1080p&line=0"
     )
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (
+            "https://aweme.snssdk.com/aweme/v1/play/?video_id=abc&ratio=720p",
+            True,
+        ),
+        (
+            "https://www.douyin.com/aweme/v1/play/?video_id=abc&file_id=f&sign=s",
+            False,
+        ),
+        ("https://v26-web.douyinvod.com/video.mp4?sign=s", False),
+        (None, False),
+    ],
+)
+def test_legacy_play_url_detection(url: str | None, expected: bool):
+    assert DouyinParser._is_legacy_play_url(url) is expected
+
+
+def test_video_url_falls_back_to_download_addr():
+    data = msgspec.json.decode(
+        msgspec.json.encode(
+            {
+                "create_time": 0,
+                "author": {"nickname": "tester"},
+                "desc": "video",
+                "video": {
+                    "play_addr": {"url_list": []},
+                    "download_addr": {
+                        "url_list": ["https://v26-web.douyinvod.com/video.mp4"]
+                    },
+                },
+            }
+        ),
+        type=VideoData,
+    )
+    assert data.video_url == "https://v26-web.douyinvod.com/video.mp4"
+
+
+def test_video_url_prefers_cdn_over_legacy_play_addr():
+    data = msgspec.json.decode(
+        msgspec.json.encode(
+            {
+                "create_time": 0,
+                "author": {"nickname": "tester"},
+                "desc": "video",
+                "video": {
+                    "play_addr": {
+                        "url_list": [
+                            "https://aweme.snssdk.com/aweme/v1/play/"
+                            "?video_id=expired&ratio=720p"
+                        ]
+                    },
+                    "bit_rate": [
+                        {
+                            "play_addr": {
+                                "url_list": [
+                                    "https://v26-web.douyinvod.com/video.mp4?sign=ok"
+                                ]
+                            }
+                        }
+                    ],
+                },
+            }
+        ),
+        type=VideoData,
+    )
+
+    assert data.video_url == "https://v26-web.douyinvod.com/video.mp4?sign=ok"
 
 
 def test_douyin_image_headers_keep_ua_and_add_page_context():

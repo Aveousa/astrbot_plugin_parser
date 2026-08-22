@@ -7,6 +7,17 @@ from msgspec import Struct, field
 from ..base import ParseException
 
 
+def is_legacy_play_url(url: str) -> bool:
+    """Return whether *url* is the obsolete unsigned ``video_id`` endpoint."""
+    parsed = urlparse(url)
+    if not parsed.path.rstrip("/").endswith("/aweme/v1/play"):
+        return False
+    query = parse_qs(parsed.query)
+    # The detail endpoint may use the same path with file_id/sign.  Those are
+    # signed media URLs and must remain valid candidates.
+    return "video_id" in query and not {"file_id", "sign"}.issubset(query)
+
+
 class Avatar(Struct):
     url_list: list[str]
 
@@ -31,6 +42,10 @@ class PlayAddr(Struct):
     url_list: list[str] = field(default_factory=list)
 
 
+class BitRate(Struct):
+    play_addr: PlayAddr | None = None
+
+
 class Cover(Struct):
     url_list: list[str] = field(default_factory=list)
 
@@ -38,6 +53,9 @@ class Cover(Struct):
 class Video(Struct):
     play_addr: PlayAddr = field(default_factory=PlayAddr)
     play_addr_h264: PlayAddr | None = None
+    play_addr_265: PlayAddr | None = None
+    download_addr: PlayAddr | None = None
+    bit_rate: list[BitRate] = field(default_factory=list)
     cover: Cover = field(default_factory=Cover)
     duration: int = 0
 
@@ -62,23 +80,49 @@ class VideoData(Struct):
 
     @property
     def video_url(self) -> str | None:
-        if not self.video or not self.video.play_addr.url_list:
+        if not self.video:
             return None
-        return choice(self.video.play_addr.url_list).replace("playwm", "play")
+        # 网页详情接口可能同时返回 CDN 直链、playwm 和 download_addr；
+        # 按可用性尝试，避免把已失效的旧 video_id 端点当成唯一来源。
+        addresses = (
+            self.video.play_addr_h264,
+            self.video.play_addr,
+            self.video.download_addr,
+            self.video.play_addr_265,
+            *(item.play_addr for item in self.video.bit_rate),
+        )
+        legacy_urls: list[str] = []
+        for address in addresses:
+            if address and address.url_list:
+                urls = [url.replace("playwm", "play") for url in address.url_list]
+                usable_urls = [url for url in urls if not is_legacy_play_url(url)]
+                if usable_urls:
+                    return choice(usable_urls)
+                legacy_urls.extend(urls)
+        # Preserve the historic fallback for callers that still probe this
+        # endpoint for a fresh URL, but never prefer it to a signed CDN URL.
+        return choice(legacy_urls) if legacy_urls else None
 
     @property
     def play_token(self) -> str | None:
         if not self.video:
             return None
 
-        play_addr = self.video.play_addr
-        if play_addr.uri:
-            return play_addr.uri
-
-        for url in play_addr.url_list:
-            query = parse_qs(urlparse(url).query)
-            if video_id := query.get("video_id"):
-                return video_id[0]
+        for play_addr in (
+            self.video.play_addr_h264,
+            self.video.play_addr,
+            self.video.download_addr,
+            self.video.play_addr_265,
+            *(item.play_addr for item in self.video.bit_rate),
+        ):
+            if not play_addr:
+                continue
+            if play_addr.uri:
+                return play_addr.uri
+            for url in play_addr.url_list:
+                query = parse_qs(urlparse(url).query)
+                if video_id := query.get("video_id"):
+                    return video_id[0]
         return None
 
     @property

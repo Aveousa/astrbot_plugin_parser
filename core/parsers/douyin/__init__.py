@@ -338,16 +338,33 @@ class DouyinParser(BaseParser):
         ).video_data
         aweme_id = self._extract_aweme_id(url)
         detail_data = None
-        if aweme_id and video_data.images:
+        needs_detail = bool(
+            aweme_id
+            and (
+                video_data.images
+                or not video_data.video_url
+                or self._is_legacy_play_url(video_data.video_url)
+            )
+        )
+        if needs_detail:
             detail_data = await self.fetch_signed_aweme_detail(aweme_id)
-            if detail_data and detail_data.images:
+            if detail_data and detail_data.video:
+                # 分享页中的 play_addr 目前经常仍是旧的 video_id 端点；该端点
+                # 对部分作品返回 404。网页详情接口会同时返回带签名的 CDN
+                # 地址（通常是 v26-web*.douyinvod.com），优先采用它。
+                detail_video_url = detail_data.video_url
+                if detail_video_url and not self._is_legacy_play_url(detail_video_url):
+                    video_data.video = detail_data.video
+                    logger.info("[抖音] 已使用网页详情接口补全视频 CDN 直链")
+
+            if detail_data and detail_data.images and video_data.images:
                 has_richer_images = any(
                     image.clip_type is not None or image.video
                     for image in detail_data.images
                 )
                 if has_richer_images:
                     logger.info(
-                        "[抖音] 已使用登录详情接口补全图文媒体数据: "
+                        "[抖音] 已使用网页详情接口补全图文媒体数据: "
                         f"图片={len(detail_data.images)}"
                     )
                     video_data.images = detail_data.images
@@ -377,8 +394,10 @@ class DouyinParser(BaseParser):
             logger.debug(f"[抖音] 检测到视频内容，时长: {duration}秒")
             video_headers = self._build_media_headers(url)
             cover_headers = self._build_image_headers(url)
-            video_url = None
-            if play_token := video_data.play_token:
+            video_url = video_data.video_url
+            if self._is_legacy_play_url(video_url):
+                video_url = None
+            if not video_url and (play_token := video_data.play_token):
                 try:
                     probed = await self.probe_video_url(play_token, url)
                     video_url = probed.url
@@ -387,8 +406,11 @@ class DouyinParser(BaseParser):
                         f"[抖音] play 端点探测成功，文件大小: {probed.size} 字节"
                     )
                 except ParseException as e:
-                    logger.warning(f"[抖音] play 端点探测失败，回退 play_addr: {e}")
-            video_url = video_url or video_data.video_url
+                    logger.warning(f"[抖音] play 端点探测失败，跳过旧 play_addr: {e}")
+            # 旧 video_id 端点对部分作品会返回 404；探测也失败时不要再把它
+            # 交给下载器。
+            if not video_url and not self._is_legacy_play_url(video_data.video_url):
+                video_url = video_data.video_url
             if video_url:
                 contents.append(
                     self.create_video_content(
@@ -436,16 +458,30 @@ class DouyinParser(BaseParser):
         return None
 
     @staticmethod
+    def _is_legacy_play_url(url: str | None) -> bool:
+        """判断是否为已失效的、只含 ``video_id`` 的旧播放端点。"""
+        if not url:
+            return False
+        from .video import is_legacy_play_url
+
+        return is_legacy_play_url(url)
+
+    @staticmethod
     def _motion_photo_extra(images: list[Any] | None) -> dict[str, bool]:
         if any(image.clip_type == 5 for image in images or []):
             return {"has_motion_photo": True}
         return {}
 
     async def fetch_signed_aweme_detail(self, aweme_id: str):
-        """使用已配置的登录 Cookie 获取完整图文与实况媒体字段。"""
-        desktop_url = "https://www.douyin.com/"
-        if not self.cookiejar.get_cookie_header_for_url(desktop_url):
-            logger.info("[抖音] 未配置登录 Cookie，跳过图文详情补全")
+        """获取网页详情中的签名媒体地址并补全作品字段。
+
+        详情接口需要一个新鲜的匿名 ``ttwid``，不要求登录 Cookie。配置的
+        Cookie 仍会随请求发送，以兼容登录后作品和已有风控会话。
+        """
+        try:
+            await self.ensure_ttwid()
+        except ParseException as e:
+            logger.info(f"[抖音] ttwid 不可用，跳过网页详情补全: {e}")
             return None
 
         from .signature import generate_a_bogus, generate_ms_token, generate_verify_fp
@@ -457,8 +493,13 @@ class DouyinParser(BaseParser):
             "Safari/537.36 Edg/130.0.0.0"
         )
         for attempt in range(2):
-            cookie_header = self.cookiejar.get_cookie_header_for_url(desktop_url)
-            cookies = self.cookiejar.get(domain="www.douyin.com")
+            # ttwid 通常属于 iesdouyin.com，而详情请求位于 www.douyin.com；
+            # 手动合并两个站点的 Cookie，避免 aiohttp 因域名不匹配而丢弃 ttwid。
+            cookies = self.cookiejar.get(domain="iesdouyin.com")
+            # 优先使用与实际 www.douyin.com 请求同域的 Cookie；若仅有
+            # iesdouyin.com 的 ttwid，则仍会保留它。
+            cookies.update(self.cookiejar.get(domain="www.douyin.com"))
+            cookie_header = "; ".join(f"{name}={value}" for name, value in cookies.items())
             verify_fp = cookies.get("s_v_web_id") or generate_verify_fp()
             params = {
                 "device_platform": "webapp",
